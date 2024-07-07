@@ -1,0 +1,23 @@
+---
+- name: Install NVM (Node Version Manager)
+  shell: |
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+  args:
+    creates: /home/{{ ansible_user }}/.nvm
+
+- name: Ensure NVM is sourced in .zshrc
+  blockinfile:
+    path: /home/{{ ansible_user }}/.zshrc
+    block: |
+      export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
+
+- name: Install latest Node.js versions using NVM
+  shell: |
+    . /home/{{ ansible_user }}/.nvm/nvm.sh && \
+    nvm install node && \
+    nvm install --lts
+  environment:
+    HOME: /home/{{ ansible_user }}
+  args:
+    executable: /bin/bash

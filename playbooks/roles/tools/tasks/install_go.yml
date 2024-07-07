@@ -1,0 +1,57 @@
+---
+- name: Install essential packages
+  apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - bison
+    - curl
+    - git
+    - build-essential
+    - mercurial
+    - binutils
+    - gcc
+    - make
+
+- name: Check if GVM is already installed
+  stat:
+    path: /home/{{ ansible_user }}/.gvm/scripts/gvm
+  register: gvm_installed
+
+- name: Download GVM installer script
+  get_url:
+    url: https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer
+    dest: /home/{{ ansible_user }}/gvm-installer
+    mode: '0755'
+  when: not gvm_installed.stat.exists
+
+- name: Run GVM installer script
+  shell: |
+    bash /home/{{ ansible_user }}/gvm-installer
+  args:
+    creates: /home/{{ ansible_user }}/.gvm
+  when: not gvm_installed.stat.exists
+  ignore_errors: yes
+
+- name: Ensure GVM script exists
+  stat:
+    path: /home/{{ ansible_user }}/.gvm/scripts/gvm
+  register: gvm_script
+
+- name: Source GVM script in .zshrc
+  blockinfile:
+    path: /home/{{ ansible_user }}/.zshrc
+    block: |
+      [[ -s "$HOME/.gvm/scripts/gvm" ]] && source "$HOME/.gvm/scripts/gvm"
+  when: gvm_script.stat.exists
+
+- name: Install latest Go versions using GVM
+  shell: |
+    source /home/{{ ansible_user }}/.gvm/scripts/gvm && \
+    gvm install go1.22.5 -B && \
+    gvm use go1.22.5 --default
+  environment:
+    HOME: /home/{{ ansible_user }}
+  args:
+    executable: /bin/bash
+  when: gvm_script.stat.exists

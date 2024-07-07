@@ -10,32 +10,19 @@ Fully automated setup for a working environment on a clean Linux installation us
 - Installs Go Version Manager (GVM) and latest Go versions
 
 ## Requirements
-- 
+
 - sudo privileges
 
 ## Installation
 
-1. Clone the repository:
+Run the following command to download and execute the setup script:
 
-    ```bash
-    git clone git@github.com:oravandres/setup.git auto-setup
-    cd ./auto-setup
-    ```
+```bash
+curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup/setup.sh | bash
+```
 
-2. Make the setup script executable:
+Make the setup script executable:
 
-    ```bash
-    chmod +x setup.sh
-    ```
+## License
 
-3. Run the setup script (default environment is `ubuntu`):
-
-    ```bash
-    ./setup.sh
-    ```
-
-   Or specify a different environment:
-
-    ```bash
-    ./setup.sh raspberry-pi-4b-8gb
-    ```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

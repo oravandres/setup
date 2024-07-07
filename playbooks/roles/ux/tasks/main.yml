@@ -11,3 +11,10 @@
     creates: /home/{{ ansible_user }}/.oh-my-zsh
   environment:
     ZSH: /home/{{ ansible_user }}/.oh-my-zsh
+
+- name: Ensure default config exists
+  blockinfile:
+    path: /home/{{ ansible_user }}/.zshrc
+    block: |
+      export DEFAULT_USER={{ ansible_user }}
+      ZSH_THEME="agnoster"
