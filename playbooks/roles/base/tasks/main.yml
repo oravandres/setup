@@ -1,0 +1,13 @@
+---
+- name: Ensure apt cache is up to date
+  apt:
+    update_cache: yes
+
+- name: Install essential base packages
+  apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - git
+    - vim
+    - net-tools
