@@ -1,0 +1,10 @@
+---
+- hosts: localhost
+  become: yes
+  vars:
+    env: "{{ env | default('ubuntu') }}"
+    ansible_user: "{{ lookup('env', 'USER') }}"
+  roles:
+    - base
+    - ux
+    - tools
