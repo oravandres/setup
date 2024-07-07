@@ -1,0 +1,16 @@
+---
+- name: Download the Google Chrome .deb package
+  get_url:
+    url: https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+    dest: /tmp/google-chrome-stable_current_amd64.deb
+
+- name: Install Google Chrome
+  apt:
+    deb: /tmp/google-chrome-stable_current_amd64.deb
+    state: present
+  become: yes
+
+- name: Remove the Google Chrome .deb package
+  file:
+    path: /tmp/google-chrome-stable_current_amd64.deb
+    state: absent
