@@ -15,6 +15,6 @@
 - name: Ensure default config exists
   blockinfile:
     path: /home/{{ ansible_user }}/.zshrc
+    marker: "# {mark} ANSIBLE MANAGED BLOCK ZSH"
     block: |
-      export DEFAULT_USER={{ ansible_user }}
-      ZSH_THEME="agnoster"
+      export DEFAULT_USER="$USER"

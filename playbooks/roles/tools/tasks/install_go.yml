@@ -38,20 +38,19 @@
     path: /home/{{ ansible_user }}/.gvm/scripts/gvm
   register: gvm_script
 
-- name: Source GVM script in .zshrc
+- name: Ensure GVM is sourced in .zshrc
   blockinfile:
     path: /home/{{ ansible_user }}/.zshrc
+    marker: "# {mark} ANSIBLE MANAGED BLOCK GVM"
     block: |
-      [[ -s "$HOME/.gvm/scripts/gvm" ]] && source "$HOME/.gvm/scripts/gvm"
-  when: gvm_script.stat.exists
+      [[ -s "/home/{{ ansible_user }}/.gvm/scripts/gvm" ]] && source "/home/{{ ansible_user }}/.gvm/scripts/gvm"
 
 - name: Install latest Go versions using GVM
   shell: |
     source /home/{{ ansible_user }}/.gvm/scripts/gvm && \
-    gvm install go1.22.5 -B && \
+    gvm install go1.22.5 && \
     gvm use go1.22.5 --default
   environment:
     HOME: /home/{{ ansible_user }}
   args:
     executable: /bin/bash
-  when: gvm_script.stat.exists
