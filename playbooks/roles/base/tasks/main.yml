@@ -9,5 +9,6 @@
     state: present
   with_items:
     - git
+    - gh
     - vim
     - net-tools

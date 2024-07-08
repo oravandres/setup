@@ -1,0 +1,57 @@
+---
+- name: Check if JetBrains Toolbox is installed
+  command: /usr/local/bin/jetbrains-toolbox --version
+  register: jetbrains_toolbox_installed
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+
+- name: Download JetBrains Toolbox
+  get_url:
+    url: https://data.services.jetbrains.com/products/download?code=TBA&platform=linux
+    dest: /tmp/jetbrains-toolbox.tar.gz
+  when: jetbrains_toolbox_installed.rc != 0
+
+- name: Extract JetBrains Toolbox
+  unarchive:
+    src: /tmp/jetbrains-toolbox.tar.gz
+    dest: /opt/
+    remote_src: yes
+  when: jetbrains_toolbox_installed.rc != 0
+
+- name: Find extracted JetBrains Toolbox directories
+  find:
+    paths: /opt
+    patterns: 'jetbrains-toolbox-*'
+    file_type: directory
+    recurse: no
+  register: toolbox_dirs
+  when: jetbrains_toolbox_installed.rc != 0
+
+- name: Extract version from directory names
+  set_fact:
+    toolbox_versions: "{{ toolbox_dirs.files | map(attribute='path') | map('regex_search', 'jetbrains-toolbox-([0-9.]+)', '\\1') | list }}"
+  when: jetbrains_toolbox_installed.rc != 0
+
+- name: Select the latest JetBrains Toolbox version
+  set_fact:
+    toolbox_latest_version: "{{ toolbox_versions | sort(reverse=true) | first }}"
+  when: jetbrains_toolbox_installed.rc != 0
+
+- name: Select the latest JetBrains Toolbox directory
+  set_fact:
+    toolbox_latest_dir: "{{ toolbox_dirs.files | selectattr('path', 'search', 'jetbrains-toolbox-' + (toolbox_latest_version | string)) | map(attribute='path') | first }}"
+  when: jetbrains_toolbox_installed.rc != 0
+
+- name: Remove old symbolic link for JetBrains Toolbox if exists
+  file:
+    path: /usr/local/bin/jetbrains-toolbox
+    state: absent
+  when: jetbrains_toolbox_installed.rc != 0
+
+- name: Create symbolic link for JetBrains Toolbox
+  file:
+    src: "{{ toolbox_latest_dir }}/jetbrains-toolbox"
+    dest: /usr/local/bin/jetbrains-toolbox
+    state: link
+  when: jetbrains_toolbox_installed.rc != 0
