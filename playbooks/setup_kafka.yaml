@@ -1,0 +1,6 @@
+---
+- name: Set up Kafka on K3s cluster
+  hosts: localhost
+  become: yes
+  roles:
+    - kafka
