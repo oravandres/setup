@@ -1,5 +1,5 @@
 ---
-- import_tasks: install_go.yml
-- import_tasks: install_node.yml
-- import_tasks: install_chrome.yml
-- import_tasks: install_jetbrains_toolbox.yml
+- import_tasks: install_go.yaml
+- import_tasks: install_node.yaml
+- import_tasks: install_chrome.yaml
+- import_tasks: install_jetbrains_toolbox.yaml

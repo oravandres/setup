@@ -1,0 +1,52 @@
+---
+# Ensure Helm is installed
+- name: Ensure Helm is installed
+  shell: |
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+
+# Add Bitnami repository
+- name: Add Bitnami repository
+  command: helm repo add bitnami https://charts.bitnami.com/bitnami
+
+# Update Helm repositories
+- name: Update Helm repositories
+  command: helm repo update
+
+# Ensure kubectl is configured to use k3s context
+- name: Ensure kubectl uses k3s context
+  shell: |
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+    kubectl get nodes
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: kubectl_check
+  ignore_errors: yes
+
+# Create namespace using kubectl
+- name: Create namespace
+  command: kubectl create namespace postgres-server
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  ignore_errors: true
+
+# Create ConfigMap for PostgreSQL configuration
+- name: Create PostgreSQL ConfigMap
+  command: kubectl create configmap postgres-config --from-file=main-config=roles/postgres/files/my-postgres.conf -n postgres-server
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  ignore_errors: yes
+
+# Apply PostgreSQL deployment
+- name: Apply PostgreSQL deployment
+  command: kubectl apply -f roles/postgres/files/postgres.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# Wait for PostgreSQL pod to be ready
+- name: Wait for PostgreSQL pod to be ready
+  shell: |
+    kubectl wait --namespace postgres-server --for=condition=ready pod -l app=postgres --timeout=120s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
