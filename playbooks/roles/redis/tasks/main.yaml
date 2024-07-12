@@ -1,9 +1,6 @@
 ---
-- name: Ensure Helm is installed
-  shell: |
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-  args:
-    creates: /usr/local/bin/helm
+- name: Create namespace for Redis
+  command: kubectl create namespace redis
 
 - name: Add Bitnami repository
   command: helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -11,20 +8,12 @@
 - name: Update Helm repositories
   command: helm repo update
 
-- name: Create namespace for Redis
-  command: kubectl create namespace redis
-  ignore_errors: true
-
 - name: Deploy Redis using Helm
   shell: |
-    helm install redis bitnami/redis --namespace redis
-  args:
-    executable: /bin/bash
+    helm install my-redis bitnami/redis --namespace redis
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: Wait for Redis pods to be ready
   shell: |
     kubectl wait --namespace redis --for=condition=ready pod -l app.kubernetes.io/name=redis --timeout=300s
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml

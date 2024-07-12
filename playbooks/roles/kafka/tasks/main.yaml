@@ -1,54 +1,19 @@
 ---
-# Ensure Helm is installed
-- name: Ensure Helm is installed
-  shell: |
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-  args:
-    creates: /usr/local/bin/helm
+- name: Create namespace
+  command: kubectl create namespace kafka
 
-# Add Bitnami repository
 - name: Add Bitnami repository
   command: helm repo add bitnami https://charts.bitnami.com/bitnami
 
-# Update Helm repositories
 - name: Update Helm repositories
   command: helm repo update
 
-# Ensure kubectl is configured to use k3s context
-- name: Ensure kubectl uses k3s context
-  shell: |
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    kubectl get nodes
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: kubectl_check
-  ignore_errors: yes
-
-# Create namespace for Kafka
-- name: Create namespace
-  command: kubectl create namespace kafka
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  ignore_errors: true
-
-
-# Upgrade or install Kafka using Helm with Node Selector
 - name: Deploy Kafka
   shell: |
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    if helm ls --namespace kafka | grep my-kafka; then
-      helm upgrade my-kafka bitnami/kafka --namespace kafka
-    else
       helm install my-kafka bitnami/kafka --namespace kafka
-    fi
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  args:
-    executable: /bin/bash
 
-# Wait for Kafka pods to be ready
 - name: Wait for Kafka pods to be ready
   shell: |
     kubectl wait --namespace kafka --for=condition=ready pod -l app.kubernetes.io/name=kafka --timeout=300s
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml

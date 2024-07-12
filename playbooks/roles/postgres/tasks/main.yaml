@@ -1,111 +1,21 @@
 ---
-# Ensure Helm is installed
-- name: Ensure Helm is installed
-  shell: |
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-  args:
-    creates: /usr/local/bin/helm
+- name: Create namespace for PostgreSQL
+  command: kubectl create namespace postgres
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
-# Add Bitnami repository
 - name: Add Bitnami repository
   command: helm repo add bitnami https://charts.bitnami.com/bitnami
 
-# Update Helm repositories
 - name: Update Helm repositories
   command: helm repo update
 
-# Ensure kubectl uses k3s context
-- name: Ensure kubectl uses k3s context
+- name: Install PostgreSQL with Helm
   shell: |
-    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    kubectl get nodes
+    helm install my-postgres bitnami/postgresql --namespace postgres
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: kubectl_check
-  ignore_errors: yes
-
-# Create namespace for PostgreSQL
-- name: Create namespace
-  command: kubectl create namespace postgres-server
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  ignore_errors: true
-
-# Copy postgres-config.yaml to the master node
-- name: Copy postgres-config.yaml to master node
-  copy:
-    src: roles/postgres/files/postgres-config.yaml
-    dest: /tmp/postgres-config.yaml
-
-# Apply the ConfigMap for PostgreSQL
-- name: Apply the ConfigMap for PostgreSQL
-  shell: |
-    kubectl apply -f /tmp/postgres-config.yaml
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-
-# Copy postgres-deployment.yaml to the master node
-- name: Copy postgres-deployment.yaml to master node
-  copy:
-    src: roles/postgres/files/postgres-deployment.yaml
-    dest: /tmp/postgres-deployment.yaml
-
-# Copy postgres-pvc.yaml to the master node
-- name: Copy postgres-pvc.yaml to master node
-  copy:
-    src: roles/postgres/files/postgres-pvc.yaml
-    dest: /tmp/postgres-pvc.yaml
-
-# Copy postgres-service.yaml to the master node
-- name: Copy postgres-service.yaml to master node
-  copy:
-    src: roles/postgres/files/postgres-service.yaml
-    dest: /tmp/postgres-service.yaml
-
-# Apply PV and PVC for PostgreSQL
-- name: Apply PV and PVC for PostgreSQL
-  shell: |
-    kubectl apply -f /tmp/postgres-pvc.yaml
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-
-# Deploy PostgreSQL using custom deployment yaml
-- name: Deploy PostgreSQL
-  shell: |
-    kubectl apply -f /tmp/postgres-deployment.yaml
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-
-# Create PostgreSQL service
-- name: Apply PostgreSQL service
-  shell: |
-    kubectl apply -f /tmp/postgres-service.yaml
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-
-# Wait for PostgreSQL pod to be ready with logs
-- name: Wait for PostgreSQL pod to be ready
-  shell: |
-    kubectl wait --namespace postgres-server --for=condition=ready pod -l app=postgres --timeout=120s || kubectl logs -l app=postgres --namespace postgres-server
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: pod_logs
-  failed_when: "'error' in pod_logs.stderr"
-
-# Print PostgreSQL pod logs if the pod is not ready
-- name: Print PostgreSQL pod logs
-  shell: |
-    kubectl logs -l app=postgres --namespace postgres-server
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  when: "'error' in pod_logs.stderr"
-
-# Set up port forwarding for PostgreSQL
-- name: Set up port forwarding for PostgreSQL
-  shell: |
-    nohup kubectl port-forward svc/postgres 5432:5432 --namespace postgres-server > /tmp/portforward-postgres.log 2>&1 &
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  async: 1
-  poll: 0
-  when: "'error' not in pod_logs.stderr"
+    POSTGRES_USER: "postgres"
+    POSTGRES_PASSWORD: "secret"
+    POSTGRES_DB: "my_database"
+    POSTGRES_HOST_AUTH_METHOD: "trust"
