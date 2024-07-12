@@ -31,11 +31,16 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   ignore_errors: true
 
-# Deploy Kafka using Helm with Node Selector
+
+# Upgrade or install Kafka using Helm with Node Selector
 - name: Deploy Kafka
   shell: |
     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-    helm install my-kafka bitnami/kafka --namespace kafka --set nodeSelector."kubernetes\.io/hostname"=lightbringer
+    if helm ls --namespace kafka | grep my-kafka; then
+      helm upgrade my-kafka bitnami/kafka --namespace kafka
+    else
+      helm install my-kafka bitnami/kafka --namespace kafka
+    fi
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   args:
