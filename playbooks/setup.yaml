@@ -1,6 +1,6 @@
 ---
 - hosts: localhost
-  become: yes
+  become: true
   vars:
     env: "{{ env | default('ubuntu') }}"
     ansible_user: "{{ lookup('env', 'USER') }}"

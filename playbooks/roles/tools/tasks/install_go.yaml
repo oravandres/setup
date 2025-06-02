@@ -31,7 +31,7 @@
   args:
     creates: /home/{{ ansible_user }}/.gvm
   when: not gvm_installed.stat.exists
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Ensure GVM script exists
   stat:

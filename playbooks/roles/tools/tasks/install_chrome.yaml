@@ -8,7 +8,7 @@
   apt:
     deb: /tmp/google-chrome-stable_current_amd64.deb
     state: present
-  become: yes
+  become: true
 
 - name: Remove the Google Chrome .deb package
   file:
