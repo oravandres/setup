@@ -21,8 +21,6 @@ Run the following command to download and execute the setup script:
 curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup/setup.sh | bash
 ```
 
-Make the setup script executable:
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
