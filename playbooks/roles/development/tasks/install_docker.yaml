@@ -1,0 +1,106 @@
+---
+- name: Update package cache for Docker installation
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install prerequisites for Docker repository
+  apt:
+    name: "{{ packages }}"
+    state: present
+  vars:
+    packages:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+
+- name: Create directory for Docker GPG key
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Docker GPG key
+  get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+
+- name: Add Docker repository (modern method)
+  apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: Install Docker packages
+  apt:
+    name: "{{ packages }}"
+    state: present
+    update_cache: yes
+  vars:
+    packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+
+- name: Check if Docker Compose standalone exists
+  stat:
+    path: /usr/local/bin/docker-compose
+  register: docker_compose_standalone
+
+- name: Install Docker Compose standalone (if not exists)
+  get_url:
+    url: https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64
+    dest: /usr/local/bin/docker-compose
+    mode: '0755'
+  when: not docker_compose_standalone.stat.exists
+
+- name: Add user to docker group
+  user:
+    name: "{{ ansible_user_id }}"
+    groups: docker
+    append: yes
+
+- name: Start and enable Docker service
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Wait for Docker to be ready
+  wait_for:
+    port: 2375
+    host: localhost
+    timeout: 30
+  ignore_errors: yes
+
+- name: Verify Docker installation
+  command: docker --version
+  register: docker_version
+  changed_when: false
+
+- name: Verify Docker Compose plugin
+  command: docker compose version
+  register: docker_compose_plugin_version
+  changed_when: false
+  ignore_errors: yes
+
+- name: Verify Docker Compose standalone
+  command: docker-compose --version
+  register: docker_compose_standalone_version
+  changed_when: false
+  ignore_errors: yes
+
+- name: Display Docker installation summary
+  debug:
+    msg: 
+      - "Docker version: {{ docker_version.stdout }}"
+      - "Docker Compose plugin: {{ docker_compose_plugin_version.stdout | default('Not available') }}"
+      - "Docker Compose standalone: {{ docker_compose_standalone_version.stdout | default('Not available') }}"
+      - "User {{ ansible_user_id }} added to docker group"
+      - "Note: You may need to log out and back in for group membership to take effect" 

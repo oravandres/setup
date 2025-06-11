@@ -1,0 +1,12 @@
+---
+# Programming Languages & Runtime Environments
+- import_tasks: install_python3.yaml
+- import_tasks: install_go.yaml
+- import_tasks: install_node.yaml
+
+# Development Tools & IDEs
+- import_tasks: install_jetbrains_toolbox.yaml
+- import_tasks: install_vscode.yaml
+
+# Container & Infrastructure Development
+- import_tasks: install_docker.yaml 

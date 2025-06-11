@@ -1,5 +1,15 @@
 ---
+# Core Development Tools
+- import_tasks: install_python3.yaml
 - import_tasks: install_go.yaml
 - import_tasks: install_node.yaml
-- import_tasks: install_chrome.yaml
+
+# Developer Applications
 - import_tasks: install_jetbrains_toolbox.yaml
+
+# Infrastructure Tools (keeping Docker here as it's commonly needed)
+- import_tasks: install_docker.yaml
+
+# Note: Chrome and AI tools should be moved to separate roles
+# - Chrome → 'browsers' role or 'desktop' role  
+# - AI tools → 'ai-ml' role or 'data-science' role

@@ -1,0 +1,15 @@
+---
+# Core AI/ML Libraries
+- import_tasks: install_pytorch.yaml
+- import_tasks: install_tensorflow.yaml
+
+# AI Platform Tools
+- import_tasks: install_ollama.yaml
+- import_tasks: install_openai_tools.yaml
+
+# Data Science & Visualization
+- import_tasks: install_jupyter.yaml
+- import_tasks: install_data_science_stack.yaml
+
+# Vector Databases & Search
+- import_tasks: install_vector_dbs.yaml 
