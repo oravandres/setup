@@ -19,6 +19,12 @@
       - python3-setuptools
       - python3-wheel
 
+- name: Get user home directory
+  shell: "echo $HOME"
+  register: user_home
+  become: false
+  changed_when: false
+
 - name: Check if python command exists
   command: which python
   register: python_exists
@@ -35,7 +41,7 @@
 
 - name: Ensure user's .local/bin directory exists
   file:
-    path: "{{ ansible_env.HOME }}/.local/bin"
+    path: "{{ user_home.stdout }}/.local/bin"
     state: directory
     mode: '0755'
   become: false
@@ -83,7 +89,7 @@
 
 - name: Ensure .local/bin is in PATH for zsh users
   blockinfile:
-    path: "{{ ansible_env.HOME }}/.zshrc"
+    path: "{{ user_home.stdout }}/.zshrc"
     marker: "# {mark} ANSIBLE MANAGED BLOCK PYTHON PATH"
     block: |
       # Add pip user bin to PATH
@@ -94,7 +100,7 @@
 
 - name: Ensure .local/bin is in PATH for bash users
   blockinfile:
-    path: "{{ ansible_env.HOME }}/.bashrc"
+    path: "{{ user_home.stdout }}/.bashrc"
     marker: "# {mark} ANSIBLE MANAGED BLOCK PYTHON PATH"
     block: |
       # Add pip user bin to PATH
@@ -118,4 +124,4 @@
     msg: 
       - "Python version: {{ python_version.stdout }}"
       - "Pip version: {{ pip_version.stdout }}"
-      - "User packages installed to: {{ ansible_env.HOME }}/.local/" 
+      - "User packages installed to: {{ user_home.stdout }}/.local/" 

@@ -10,8 +10,6 @@
     state: present
   vars:
     packages:
-      - git
-      - gh
       - vim
       - net-tools
       - curl
@@ -19,40 +17,7 @@
       - unzip
       - tree
 
-- name: Configure git global user name
-  git_config:
-    name: user.name
-    value: "Andres Orav"
-    scope: global
-  become: false
 
-- name: Configure git global user email
-  git_config:
-    name: user.email
-    value: "andres@orav.eu"
-    scope: global
-  become: false
-
-- name: Configure git global editor
-  git_config:
-    name: core.editor
-    value: "vim"
-    scope: global
-  become: false
-
-- name: Configure git default branch name
-  git_config:
-    name: init.defaultBranch
-    value: "main"
-    scope: global
-  become: false
-
-- name: Configure git pull behavior
-  git_config:
-    name: pull.rebase
-    value: "false"
-    scope: global
-  become: false
 
 - name: Check if Helm is already installed
   command: helm version --short
@@ -68,16 +33,4 @@
     creates: /usr/local/bin/helm
   when: helm_installed.rc != 0
 
-- name: Verify git configuration
-  command: git config --global --list
-  register: git_config_output
-  changed_when: false
-  become: false
 
-- name: Display git configuration summary
-  debug:
-    msg: 
-      - "Git configuration completed for user: {{ ansible_user_id }}"
-      - "User: Andres Orav <andres@orav.eu>"
-      - "Editor: vim"
-      - "Default branch: main"

@@ -1,0 +1,119 @@
+---
+- name: Install dependencies for Cursor
+  apt:
+    name: "{{ packages }}"
+    state: present
+    update_cache: yes
+  vars:
+    packages:
+      - wget
+      - ca-certificates
+      - gnupg
+      - lsb-release
+
+- name: Get user home directory
+  shell: "echo $HOME"
+  register: user_home
+  become: false
+  changed_when: false
+
+- name: Check if Cursor is already installed
+  command: which cursor
+  register: cursor_installed
+  failed_when: false
+  changed_when: false
+
+- name: Create temporary directory for Cursor download
+  tempfile:
+    state: directory
+    suffix: cursor
+  register: cursor_temp_dir
+  when: cursor_installed.rc != 0
+
+- name: Download Cursor .deb package from official site
+  get_url:
+    url: https://downloader.cursor.sh/linux/appImage/x64
+    dest: "{{ cursor_temp_dir.path }}/cursor.AppImage"
+    mode: '0755'
+    timeout: 300
+  when: cursor_installed.rc != 0
+
+- name: Create Cursor installation directory
+  file:
+    path: /opt/cursor
+    state: directory
+    mode: '0755'
+  when: cursor_installed.rc != 0
+
+- name: Install Cursor AppImage
+  copy:
+    src: "{{ cursor_temp_dir.path }}/cursor.AppImage"
+    dest: /opt/cursor/cursor.AppImage
+    mode: '0755'
+    remote_src: yes
+  when: cursor_installed.rc != 0
+
+- name: Create Cursor executable wrapper
+  copy:
+    dest: /usr/local/bin/cursor
+    content: |
+      #!/bin/bash
+      exec /opt/cursor/cursor.AppImage "$@"
+    mode: '0755'
+  when: cursor_installed.rc != 0
+
+- name: Clean up temporary directory
+  file:
+    path: "{{ cursor_temp_dir.path }}"
+    state: absent
+  when: cursor_installed.rc != 0 and cursor_temp_dir.path is defined
+
+- name: Verify Cursor installation
+  command: cursor --version
+  register: cursor_version_check
+  changed_when: false
+
+- name: Create Cursor desktop entry
+  copy:
+    dest: /usr/share/applications/cursor.desktop
+    content: |
+      [Desktop Entry]
+      Name=Cursor
+      Comment=The AI-first code editor
+      GenericName=Text Editor
+      Exec=cursor %F
+      Icon=cursor
+      Type=Application
+      StartupNotify=true
+      StartupWMClass=Cursor
+      Categories=TextEditor;Development;IDE;
+      MimeType=text/plain;inode/directory;
+      Actions=new-empty-window;
+      Keywords=cursor;editor;ide;development;ai;
+
+      [Desktop Action new-empty-window]
+      Name=New Empty Window
+      Exec=cursor --new-window %F
+      Icon=cursor
+    mode: '0644'
+  when: cursor_installed.rc != 0
+
+- name: Add Cursor to user's local bin (symlink)
+  file:
+    src: /usr/local/bin/cursor
+    dest: "{{ user_home.stdout }}/.local/bin/cursor"
+    state: link
+    force: yes
+  become: false
+  when: cursor_installed.rc != 0
+
+- name: Display Cursor installation summary
+  debug:
+    msg:
+      - "Cursor installation completed successfully"
+      - "Version: {{ cursor_version_check.stdout if cursor_version_check.stdout is defined else 'Unknown' }}"
+      - "Executable: /usr/local/bin/cursor"
+      - "AppImage: /opt/cursor/cursor.AppImage"
+      - "Desktop entry: /usr/share/applications/cursor.desktop"
+      - "User symlink: {{ user_home.stdout }}/.local/bin/cursor"
+      - "You can launch Cursor from applications menu or run 'cursor' in terminal" 

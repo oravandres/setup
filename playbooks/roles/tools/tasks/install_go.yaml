@@ -14,9 +14,15 @@
       - gcc
       - make
 
+- name: Get user home directory
+  shell: "echo $HOME"
+  register: user_home
+  become: false
+  changed_when: false
+
 - name: Check if GVM is already installed
   stat:
-    path: "{{ ansible_env.HOME }}/.gvm/scripts/gvm"
+    path: "{{ user_home.stdout }}/.gvm/scripts/gvm"
   register: gvm_installed
   become: false
 
@@ -29,80 +35,80 @@
 - name: Download GVM installer script
   get_url:
     url: https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer
-    dest: "{{ ansible_env.HOME }}/gvm-installer"
+    dest: "{{ user_home.stdout }}/gvm-installer"
     mode: '0755'
   become: false
   when: not gvm_installed.stat.exists
 
 - name: Run GVM installer script
   shell: |
-    bash {{ ansible_env.HOME }}/gvm-installer
+    bash {{ user_home.stdout }}/gvm-installer
   args:
-    creates: "{{ ansible_env.HOME }}/.gvm"
+    creates: "{{ user_home.stdout }}/.gvm"
   become: false
   when: not gvm_installed.stat.exists
 
 - name: Remove GVM installer script
   file:
-    path: "{{ ansible_env.HOME }}/gvm-installer"
+    path: "{{ user_home.stdout }}/gvm-installer"
     state: absent
   become: false
   when: not gvm_installed.stat.exists
 
 - name: Ensure GVM is sourced in .zshrc
   blockinfile:
-    path: "{{ ansible_env.HOME }}/.zshrc"
+    path: "{{ user_home.stdout }}/.zshrc"
     marker: "# {mark} ANSIBLE MANAGED BLOCK GVM"
     block: |
-      [[ -s "{{ ansible_env.HOME }}/.gvm/scripts/gvm" ]] && source "{{ ansible_env.HOME }}/.gvm/scripts/gvm"
+      [[ -s "{{ user_home.stdout }}/.gvm/scripts/gvm" ]] && source "{{ user_home.stdout }}/.gvm/scripts/gvm"
     create: yes
   become: false
   when: ansible_env.SHELL is defined and 'zsh' in ansible_env.SHELL
 
 - name: Ensure GVM is sourced in .bashrc
   blockinfile:
-    path: "{{ ansible_env.HOME }}/.bashrc"
+    path: "{{ user_home.stdout }}/.bashrc"
     marker: "# {mark} ANSIBLE MANAGED BLOCK GVM"
     block: |
-      [[ -s "{{ ansible_env.HOME }}/.gvm/scripts/gvm" ]] && source "{{ ansible_env.HOME }}/.gvm/scripts/gvm"
+      [[ -s "{{ user_home.stdout }}/.gvm/scripts/gvm" ]] && source "{{ user_home.stdout }}/.gvm/scripts/gvm"
     create: yes
   become: false
   when: ansible_env.SHELL is defined and 'bash' in ansible_env.SHELL
 
 - name: Install latest stable Go version (binary)
   shell: |
-    source {{ ansible_env.HOME }}/.gvm/scripts/gvm
+    source {{ user_home.stdout }}/.gvm/scripts/gvm
     gvm install go1.23.4 -B
     gvm use go1.23.4 --default
   environment:
-    HOME: "{{ ansible_env.HOME }}"
+    HOME: "{{ user_home.stdout }}"
   args:
-    executable: /bin/bash
+    executable: /bin/zsh
   become: false
 
 - name: Install useful Go tools
   shell: |
-    source {{ ansible_env.HOME }}/.gvm/scripts/gvm
+    source {{ user_home.stdout }}/.gvm/scripts/gvm
     gvm use go1.23.4
     go install golang.org/x/tools/...@latest
     go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     go install github.com/air-verse/air@latest
   environment:
-    HOME: "{{ ansible_env.HOME }}"
+    HOME: "{{ user_home.stdout }}"
   args:
-    executable: /bin/bash
+    executable: /bin/zsh
   become: false
   ignore_errors: yes
 
 - name: Verify Go installation
   shell: |
-    source {{ ansible_env.HOME }}/.gvm/scripts/gvm
+    source {{ user_home.stdout }}/.gvm/scripts/gvm
     gvm use go1.23.4
     go version
   environment:
-    HOME: "{{ ansible_env.HOME }}"
+    HOME: "{{ user_home.stdout }}"
   args:
-    executable: /bin/bash
+    executable: /bin/zsh
   register: go_version
   changed_when: false
   become: false
@@ -111,5 +117,5 @@
   debug:
     msg: 
       - "Go version: {{ go_version.stdout }}"
-      - "GVM installed at: {{ ansible_env.HOME }}/.gvm"
+      - "GVM installed at: {{ user_home.stdout }}/.gvm"
       - "Go tools installed: golang.org/x/tools, golangci-lint, air"

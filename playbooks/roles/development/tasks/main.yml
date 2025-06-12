@@ -4,8 +4,8 @@
 - import_tasks: install_go.yaml
 - import_tasks: install_node.yaml
 
-# Development Tools & IDEs
-- import_tasks: install_jetbrains_toolbox.yaml
+# Development IDEs and Editors
+- import_tasks: install_cursor.yaml
 - import_tasks: install_vscode.yaml
 
 # Container & Infrastructure Development
