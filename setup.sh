@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Ensure a playbook is provided
+# Set the playbook - default to main setup if none provided
 if [ -z "$1" ]; then
-  echo "Usage: $0 <playbook>"
-  exit 1
+  playbook="playbooks/setup.yaml"
+  echo "No playbook specified, using default: $playbook"
+else
+  playbook=$1
+  echo "Using specified playbook: $playbook"
 fi
-
-# Set the playbook
-playbook=$1
 
 # Update package list and upgrade all packages
 sudo apt update && sudo apt upgrade -y

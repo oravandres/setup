@@ -1,26 +1,113 @@
-# Automated Setup
+# Automated Development Environment Setup
 
-Fully automated setup for a working environment on a clean Linux installation using Ansible.
+Fully automated setup for a comprehensive development environment on a clean Linux installation using Ansible. This setup provides everything you need for modern development work, from essential system tools to specialized development environments and applications.
 
-## Features
+## 🚀 Features
 
-- Installs essential base packages (git, vim, net-tools)
-- Installs and configures Zsh and Oh My Zsh
-- Installs Node Version Manager (NVM) and latest Node.js versions
-- Installs Go Version Manager (GVM) and latest Go versions
+### Base System
+- Essential system packages (vim, curl, wget, unzip, tree, net-tools)
+- Helm package manager for Kubernetes
 
-## Requirements
+### Development Tools
+- **Version Control**: Git with configuration
+- **Programming Languages**: 
+  - Python 3 and pip
+  - Go programming language
+  - Node.js and npm
+- **Development Environments**: 
+  - JetBrains Toolbox (IntelliJ, PyCharm, etc.)
+  - Cursor AI-powered code editor
+- **Infrastructure Tools**: 
+  - Docker and Docker Compose
+  - kubectl for Kubernetes management
+- **AI Development Tools**: Specialized AI/ML development tools
 
+### User Experience & Shell
+- **Zsh Shell**: Complete Oh My Zsh setup with popular plugins
+  - zsh-autosuggestions for command completion
+  - zsh-syntax-highlighting for syntax coloring
+  - zsh-bat for enhanced file viewing
+  - Comprehensive plugin support (git, docker, kubectl, helm, npm, node, python, pip)
+- **Enhanced File Tools**: bat/batcat for syntax-highlighted file viewing
+- **Comprehensive Aliases**: 60+ useful command aliases for:
+  - Directory navigation and file operations
+  - Git workflow shortcuts
+  - System monitoring and network tools
+  - Python and Node.js development
+  - Archive handling and text processing
+
+### Desktop Applications (Optional)
+- **Web Browsers**: Google Chrome, Firefox
+- **Communication**: Discord, Slack
+- **Media & Graphics**: VLC Media Player, GIMP
+
+### Database & Infrastructure (Specialized Playbooks)
+- **PostgreSQL**: Database server setup
+- **Redis**: In-memory data structure store
+- **Apache Kafka**: Distributed event streaming platform
+
+## 📋 Requirements
+
+- Ubuntu/Debian-based Linux distribution
 - sudo privileges
+- Internet connection for package downloads
 
-## Installation
+## 🛠 Installation
 
-Run the following command to download and execute the setup script:
+### Full Development Environment
+Run the following command to download and execute the main setup:
 
 ```bash
-curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup/setup.sh | bash
+curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup.yaml
 ```
 
-## License
+This installs the core development environment including base tools, UX enhancements, and development tools.
+
+### Specialized Installations
+For specific components, you can run individual playbooks:
+
+```bash
+# PostgreSQL setup
+curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup_postgres.yaml
+
+# Redis setup  
+curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup_redis.yaml
+
+# Kafka setup
+curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup_kafka.yaml
+```
+
+## 🏗 Project Structure
+
+```
+setup/
+├── playbooks/
+│   ├── roles/
+│   │   ├── base/          # Essential system packages & tools
+│   │   ├── tools/         # Development tools & applications  
+│   │   ├── ux/            # Shell environment & user experience
+│   │   ├── desktop/       # Desktop applications (browsers, media, etc.)
+│   │   ├── postgres/      # PostgreSQL database setup
+│   │   ├── redis/         # Redis in-memory store
+│   │   └── kafka/         # Apache Kafka streaming platform
+│   ├── setup.yaml        # Main playbook (base + ux + tools)
+│   ├── setup_postgres.yaml
+│   ├── setup_redis.yaml
+│   └── setup_kafka.yaml
+└── setup.sh              
+```
+
+## 🎯 What You Get
+
+After running the main setup, you'll have:
+
+- A fully configured Zsh shell with Oh My Zsh and helpful plugins
+- All major development tools ready to use (Git, Python, Node.js, Go, Docker)
+- Professional development environments (JetBrains, Cursor)
+- Kubernetes tools (kubectl, Helm) for cloud-native development
+- 60+ time-saving command aliases
+- Enhanced terminal experience with syntax highlighting and autocompletion
+
+## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

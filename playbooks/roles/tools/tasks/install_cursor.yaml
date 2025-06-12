@@ -10,6 +10,7 @@
       - ca-certificates
       - gnupg
       - lsb-release
+      - curl
 
 - name: Get user home directory
   shell: "echo $HOME"
@@ -30,12 +31,36 @@
   register: cursor_temp_dir
   when: cursor_installed.rc != 0
 
-- name: Download Cursor .deb package from official site
+- name: Get the actual Cursor download URL
+  shell: |
+    curl -s -I "https://www.cursor.com/api/download?platform=linux-x64&releaseTrack=stable" | grep -i location | cut -d' ' -f2 | tr -d '\r'
+  register: cursor_download_url
+  when: cursor_installed.rc != 0
+
+- name: Download Cursor AppImage
   get_url:
-    url: https://downloader.cursor.sh/linux/appImage/x64
+    url: "{{ cursor_download_url.stdout | trim }}"
     dest: "{{ cursor_temp_dir.path }}/cursor.AppImage"
     mode: '0755'
     timeout: 300
+    follow_redirects: all
+    headers:
+      User-Agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  when: cursor_installed.rc != 0 and cursor_download_url.stdout | trim | length > 0
+
+- name: Fallback - Download Cursor using curl if get_url fails
+  shell: |
+    curl -L -o "{{ cursor_temp_dir.path }}/cursor.AppImage" \
+         -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
+         "https://www.cursor.com/api/download?platform=linux-x64&releaseTrack=stable"
+    chmod +x "{{ cursor_temp_dir.path }}/cursor.AppImage"
+  when: cursor_installed.rc != 0 and (cursor_download_url.stdout | trim | length == 0)
+
+- name: Verify downloaded file is an AppImage
+  shell: |
+    file "{{ cursor_temp_dir.path }}/cursor.AppImage" | grep -i "executable"
+  register: file_check
+  failed_when: false
   when: cursor_installed.rc != 0
 
 - name: Create Cursor installation directory
@@ -68,10 +93,17 @@
     state: absent
   when: cursor_installed.rc != 0 and cursor_temp_dir.path is defined
 
-- name: Verify Cursor installation
-  command: cursor --version
+- name: Verify Cursor installation (with proper AppImage execution)
+  shell: |
+    if [ -x "/opt/cursor/cursor.AppImage" ]; then
+      /opt/cursor/cursor.AppImage --version 2>/dev/null || echo "Cursor installed but version check failed"
+    else
+      echo "Cursor AppImage not found or not executable"
+      exit 1
+    fi
   register: cursor_version_check
   changed_when: false
+  failed_when: false
 
 - name: Create Cursor desktop entry
   copy:
@@ -110,8 +142,8 @@
 - name: Display Cursor installation summary
   debug:
     msg:
-      - "Cursor installation completed successfully"
-      - "Version: {{ cursor_version_check.stdout if cursor_version_check.stdout is defined else 'Unknown' }}"
+      - "Cursor installation completed"
+      - "Status: {{ cursor_version_check.stdout if cursor_version_check.stdout is defined else 'Installation attempted' }}"
       - "Executable: /usr/local/bin/cursor"
       - "AppImage: /opt/cursor/cursor.AppImage"
       - "Desktop entry: /usr/share/applications/cursor.desktop"

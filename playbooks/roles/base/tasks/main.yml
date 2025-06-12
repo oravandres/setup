@@ -12,25 +12,7 @@
     packages:
       - vim
       - net-tools
+      - htop
+      - gimp
       - curl
       - wget
-      - unzip
-      - tree
-
-
-
-- name: Check if Helm is already installed
-  command: helm version --short
-  register: helm_installed
-  failed_when: false
-  changed_when: false
-  ignore_errors: true
-
-- name: Install Helm
-  shell: |
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-  args:
-    creates: /usr/local/bin/helm
-  when: helm_installed.rc != 0
-
-
