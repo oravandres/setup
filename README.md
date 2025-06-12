@@ -45,11 +45,7 @@ Fully automated setup for a comprehensive development environment on a clean Lin
 - **Redis**: In-memory data structure store
 - **Apache Kafka**: Distributed event streaming platform
 
-## 📋 Requirements
 
-- Ubuntu/Debian-based Linux distribution
-- sudo privileges
-- Internet connection for package downloads
 
 ## 🛠 Installation
 
@@ -89,23 +85,12 @@ setup/
 │   │   ├── postgres/      # PostgreSQL database setup
 │   │   ├── redis/         # Redis in-memory store
 │   │   └── kafka/         # Apache Kafka streaming platform
-│   ├── setup.yaml        # Main playbook (base + ux + tools)
+│   ├── setup.yaml         # Main playbook (base + ux + tools)
 │   ├── setup_postgres.yaml
 │   ├── setup_redis.yaml
 │   └── setup_kafka.yaml
 └── setup.sh              
 ```
-
-## 🎯 What You Get
-
-After running the main setup, you'll have:
-
-- A fully configured Zsh shell with Oh My Zsh and helpful plugins
-- All major development tools ready to use (Git, Python, Node.js, Go, Docker)
-- Professional development environments (JetBrains, Cursor)
-- Kubernetes tools (kubectl, Helm) for cloud-native development
-- 60+ time-saving command aliases
-- Enhanced terminal experience with syntax highlighting and autocompletion
 
 ## 📝 License
 
