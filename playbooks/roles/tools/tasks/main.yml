@@ -7,9 +7,11 @@
 
 # Developer Applications
 - import_tasks: install_jetbrains_toolbox.yaml
+- import_tasks: install_cursor.yaml
 
 # Infrastructure Tools (keeping Docker here as it's commonly needed)
 - import_tasks: install_docker.yaml
+- import_tasks: install_kubectl.yaml
 
 # Note: Chrome and AI tools should be moved to separate roles
 # - Chrome → 'browsers' role or 'desktop' role  

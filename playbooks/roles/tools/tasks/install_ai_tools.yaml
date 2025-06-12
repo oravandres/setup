@@ -15,7 +15,7 @@
       - datasets
       - tokenizers
   become: false
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Install AI platform packages
   pip:
@@ -33,7 +33,7 @@
       - langchain-openai
       - langchain-anthropic
   become: false
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Install vector database and search packages
   pip:
@@ -48,7 +48,7 @@
       - faiss-cpu
       - pinecone-client
   become: false
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Check if Ollama is already installed
   command: ollama --version
@@ -77,7 +77,7 @@
     port: 11434
     host: localhost
     timeout: 30
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Verify Ollama installation
   command: ollama --version
