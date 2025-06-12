@@ -29,7 +29,7 @@ Fully automated setup for a comprehensive development environment on a clean Lin
   - zsh-bat for enhanced file viewing
   - Comprehensive plugin support (git, docker, kubectl, helm, npm, node, python, pip)
 - **Enhanced File Tools**: bat/batcat for syntax-highlighted file viewing
-- **Comprehensive Aliases**: 60+ useful command aliases for:
+- **Comprehensive Aliases**: 20+ useful command aliases for:
   - Directory navigation and file operations
   - Git workflow shortcuts
   - System monitoring and network tools
@@ -58,7 +58,7 @@ Fully automated setup for a comprehensive development environment on a clean Lin
 Run the following command to download and execute the main setup:
 
 ```bash
-curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup.yaml
+curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash
 ```
 
 This installs the core development environment including base tools, UX enhancements, and development tools.
