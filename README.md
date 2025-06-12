@@ -5,8 +5,7 @@ Fully automated setup for a comprehensive development environment on a clean Lin
 ## 🚀 Features
 
 ### Base System
-- Essential system packages (vim, curl, wget, unzip, tree, net-tools)
-- Helm package manager for Kubernetes
+- Essential system packages (vim, git, net-tools, gimp, htop)
 
 ### Development Tools
 - **Version Control**: Git with configuration
