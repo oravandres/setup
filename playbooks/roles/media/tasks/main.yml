@@ -4,14 +4,11 @@
     update_cache: yes
     cache_valid_time: 3600
 
-- name: Install essential base packages
+- name: Install media packages
   apt:
     name: "{{ packages }}"
     state: present
   vars:
     packages:
-      - vim
-      - net-tools
-      - htop
-      - curl
-      - wget
+      - gimp
+      - vlc

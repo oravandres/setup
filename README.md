@@ -5,7 +5,7 @@ Fully automated setup for a comprehensive development environment on a clean Lin
 ## 🚀 Features
 
 ### Base System
-- Essential system packages (vim, git, net-tools, gimp, htop)
+- Essential system packages (vim, git, net-tools, htop)
 
 ### Development Tools
 - **Version Control**: Git with configuration
@@ -36,8 +36,6 @@ Fully automated setup for a comprehensive development environment on a clean Lin
   - Archive handling and text processing
 
 ### Desktop Applications (Optional)
-- **Web Browsers**: Google Chrome, Firefox
-- **Communication**: Discord, Slack
 - **Media & Graphics**: VLC Media Player, GIMP
 
 ### Database & Infrastructure (Specialized Playbooks)
@@ -58,19 +56,6 @@ curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash
 
 This installs the core development environment including base tools, UX enhancements, and development tools.
 
-### Specialized Installations
-For specific components, you can run individual playbooks:
-
-```bash
-# PostgreSQL setup
-curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup_postgres.yaml
-
-# Redis setup  
-curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup_redis.yaml
-
-# Kafka setup
-curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash -s playbooks/setup_kafka.yaml
-```
 
 ## 🏗 Project Structure
 
@@ -81,7 +66,7 @@ setup/
 │   │   ├── base/          # Essential system packages & tools
 │   │   ├── tools/         # Development tools & applications  
 │   │   ├── ux/            # Shell environment & user experience
-│   │   ├── desktop/       # Desktop applications (browsers, media, etc.)
+│   │   ├── media/         # Media applications (vlc, gimp)
 │   │   ├── postgres/      # PostgreSQL database setup
 │   │   ├── redis/         # Redis in-memory store
 │   │   └── kafka/         # Apache Kafka streaming platform

@@ -23,15 +23,10 @@
   shell: |
     # Check if cursor command exists
     if which cursor >/dev/null 2>&1; then
-      # Check if the AppImage file exists and is actually a binary (not JSON)
+      # Check if the AppImage file exists
       if [ -f "/opt/cursor/cursor.AppImage" ]; then
-        if file /opt/cursor/cursor.AppImage | grep -q "executable\|ELF\|AppImage"; then
-          echo "Cursor properly installed"
-          exit 0
-        else
-          echo "Cursor AppImage is corrupted (contains text/JSON instead of binary)"
-          exit 1
-        fi
+        echo "Cursor properly installed"
+        exit 0
       else
         echo "Cursor command found but AppImage missing"
         exit 1
