@@ -53,10 +53,6 @@
   become: false
   changed_when: false
 
-- name: Display final ownership
-  debug:
-    msg: "Final Oh My Zsh ownership: {{ final_ownership_check.stdout }}"
-
 - name: Create Oh My Zsh custom plugins directory structure
   file:
     path: "{{ user_home.stdout }}/.oh-my-zsh/custom/plugins"
@@ -114,10 +110,6 @@
   copy:
     dest: "{{ user_home.stdout }}/.aliases"
     content: |
-      # ========================================
-      # Personal Aliases Configuration
-      # ========================================
-
       # Directory Navigation & Listing
       alias la='ls -lah --group-directories-first --color=auto'
 
@@ -277,7 +269,7 @@
     msg: 
       - "Oh My Zsh installed at: {{ user_home.stdout }}/.oh-my-zsh"
       - "Plugins installed: git, zsh-autosuggestions, zsh-syntax-highlighting, zsh-bat, docker, kubectl, helm, npm, node, python, pip"
-      - "Theme: agnoster"
+      - "Theme: robbyrussell"
       - "Bat version: {{ bat_version.stdout }}"
       - "Default shell set to: /bin/zsh"
       - "User: {{ ansible_user_id }}"

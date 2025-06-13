@@ -85,7 +85,8 @@
       - notebook
       - ipython
   become: false
-  ignore_errors: yes  # These might fail on some systems due to dependencies
+  register: data_science_install
+  failed_when: false
 
 - name: Ensure .local/bin is in PATH for zsh users
   blockinfile:
@@ -124,4 +125,8 @@
     msg: 
       - "Python version: {{ python_version.stdout }}"
       - "Pip version: {{ pip_version.stdout }}"
-      - "User packages installed to: {{ user_home.stdout }}/.local/" 
+      - "User packages installed to: {{ user_home.stdout }}/.local/"
+
+- name: Display data science packages installation result
+  debug:
+    msg: "Data science packages installation: {{ 'successful' if not data_science_install.failed else 'failed - some packages may have dependency issues' }}" 

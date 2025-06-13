@@ -1,9 +1,14 @@
 ---
 - name: Create namespace for Redis
-  command: kubectl create namespace redis
+  shell: kubectl create namespace redis || kubectl get namespace redis
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
 
 - name: Add Bitnami repository
   command: helm repo add bitnami https://charts.bitnami.com/bitnami
+  failed_when: false
+  changed_when: false
 
 - name: Update Helm repositories
   command: helm repo update
@@ -17,3 +22,5 @@
 - name: Wait for Redis pods to be ready
   shell: |
     kubectl wait --namespace redis --for=condition=ready pod -l app.kubernetes.io/name=redis --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml

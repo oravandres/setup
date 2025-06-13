@@ -6,11 +6,9 @@
     update_cache: yes
   vars:
     packages:
-      - wget
       - ca-certificates
       - gnupg
       - lsb-release
-      - curl
       - jq
 
 - name: Get user home directory
@@ -21,16 +19,9 @@
 
 - name: Check if Cursor is already installed and working
   shell: |
-    # Check if cursor command exists
-    if which cursor >/dev/null 2>&1; then
-      # Check if the AppImage file exists
-      if [ -f "/opt/cursor/cursor.AppImage" ]; then
-        echo "Cursor properly installed"
-        exit 0
-      else
-        echo "Cursor command found but AppImage missing"
-        exit 1
-      fi
+    if which cursor >/dev/null 2>&1 && [ -f "/opt/cursor/cursor.AppImage" ]; then
+      echo "Cursor properly installed"
+      exit 0
     else
       echo "Cursor not installed"
       exit 1
@@ -63,34 +54,20 @@
   register: cursor_temp_dir
   when: cursor_installed.rc != 0
 
-- name: Download Cursor AppImage directly
+- name: Download Cursor AppImage
   shell: |
-    echo "Downloading Cursor AppImage directly..."
-    download_url="https://downloads.cursor.com/production/53b99ce608cba35127ae3a050c1738a959750865/linux/x64/Cursor-1.0.0-x86_64.AppImage"
-    echo "Downloading from: $download_url"
+    download_url="{{ cursor_download_url | default('https://downloads.cursor.com/production/53b99ce608cba35127ae3a050c1738a959750865/linux/x64/Cursor-1.0.0-x86_64.AppImage') }}"
     curl -L -o "{{ cursor_temp_dir.path }}/cursor.AppImage" "$download_url"
     chmod +x "{{ cursor_temp_dir.path }}/cursor.AppImage"
-    echo "Download completed. File info:"
-    file "{{ cursor_temp_dir.path }}/cursor.AppImage"
-    ls -lh "{{ cursor_temp_dir.path }}/cursor.AppImage"
   register: download_result
   when: cursor_installed.rc != 0
 
 - name: Verify downloaded file is an AppImage
   shell: |
-    echo "File info:"
-    file "{{ cursor_temp_dir.path }}/cursor.AppImage"
-    echo "File size:"
-    ls -lh "{{ cursor_temp_dir.path }}/cursor.AppImage"
-    echo "File head (checking if binary):"
-    head -c 20 "{{ cursor_temp_dir.path }}/cursor.AppImage" | xxd
-    echo "Checking if file is executable..."
     if file "{{ cursor_temp_dir.path }}/cursor.AppImage" | grep -E "(executable|ELF)"; then
-      echo "File appears to be a valid executable"
+      echo "File is a valid executable"
     else
       echo "ERROR: Downloaded file is not an executable binary!"
-      echo "Content preview:"
-      head -n 5 "{{ cursor_temp_dir.path }}/cursor.AppImage"
       exit 1
     fi
   register: file_check
@@ -140,10 +117,10 @@
     state: absent
   when: cursor_installed.rc != 0 and cursor_temp_dir.path is defined
 
-- name: Verify Cursor installation (with proper AppImage execution)
+- name: Verify Cursor installation
   shell: |
     if [ -x "/opt/cursor/cursor.AppImage" ]; then
-      /opt/cursor/cursor.AppImage --version 2>/dev/null || echo "Cursor installed but version check failed"
+      /opt/cursor/cursor.AppImage --version 2>/dev/null || echo "Cursor installed successfully"
     else
       echo "Cursor AppImage not found or not executable"
       exit 1

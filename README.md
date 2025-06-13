@@ -43,8 +43,6 @@ Fully automated setup for a comprehensive development environment on a clean Lin
 - **Redis**: In-memory data structure store
 - **Apache Kafka**: Distributed event streaming platform
 
-
-
 ## 🛠 Installation
 
 ### Full Development Environment
@@ -55,7 +53,6 @@ curl -o- https://raw.githubusercontent.com/oravandres/setup/main/setup.sh | bash
 ```
 
 This installs the core development environment including base tools, UX enhancements, and development tools.
-
 
 ## 🏗 Project Structure
 

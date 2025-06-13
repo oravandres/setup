@@ -1,11 +1,14 @@
 ---
 - name: Create namespace for PostgreSQL
-  command: kubectl create namespace postgres
+  shell: kubectl create namespace postgres || kubectl get namespace postgres
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
 
 - name: Add Bitnami repository
   command: helm repo add bitnami https://charts.bitnami.com/bitnami
+  failed_when: false
+  changed_when: false
 
 - name: Update Helm repositories
   command: helm repo update
