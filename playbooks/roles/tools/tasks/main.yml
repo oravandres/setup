@@ -13,6 +13,7 @@
 - import_tasks: install_docker.yaml
 - import_tasks: install_kubectl.yaml
 - import_tasks: install_helm.yaml
+- import_tasks: install_lens.yaml
 
 # AI Tools
 - import_tasks: install_ai_tools.yaml 

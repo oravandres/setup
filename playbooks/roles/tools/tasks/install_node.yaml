@@ -77,7 +77,7 @@
   args:
     executable: /bin/bash
   become: false
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Verify Node.js installation
   shell: |
@@ -106,7 +106,7 @@
   register: npm_globals
   changed_when: false
   become: false
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Display Node.js installation summary
   debug:

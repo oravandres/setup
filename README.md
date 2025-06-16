@@ -14,7 +14,7 @@ Fully automated setup for a comprehensive development environment on a clean Lin
   - Go programming language
   - Node.js and npm
 - **Development Environments**: 
-  - JetBrains Toolbox (IntelliJ, PyCharm, etc.)
+  - JetBrains Toolbox
   - Cursor AI-powered code editor
 - **Infrastructure Tools**: 
   - Docker and Docker Compose
@@ -65,10 +65,12 @@ setup/
 │   │   ├── ux/            # Shell environment & user experience
 │   │   ├── media/         # Media applications (vlc, gimp)
 │   │   ├── postgres/      # PostgreSQL database setup
+│   │   ├── k3s/           # Kubernetes HA cluster setup
 │   │   ├── redis/         # Redis in-memory store
 │   │   └── kafka/         # Apache Kafka streaming platform
 │   ├── setup.yaml         # Main playbook (base + ux + tools)
 │   ├── setup_postgres.yaml
+│   ├── setup_k3s.yaml
 │   ├── setup_redis.yaml
 │   └── setup_kafka.yaml
 └── setup.sh              
