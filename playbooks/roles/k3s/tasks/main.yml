@@ -187,10 +187,18 @@
     - inventory_hostname == groups['k3s_servers'][0]
     - cluster_status is defined
 
-# Local kubectl setup
-- name: Create local kubeconfig directory
+# Local kubectl setup - only for the local user, not root
+- name: Get local user home directory
+  shell: echo $HOME
+  register: local_user_home
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Create local kubeconfig directory for the local user
   file:
-    path: "{{ ansible_env.HOME }}/.kube"
+    path: "{{ local_user_home.stdout }}/.kube"
     state: directory
     mode: '0700'
   delegate_to: localhost
@@ -201,14 +209,14 @@
 - name: Copy kubeconfig to local machine
   fetch:
     src: /etc/rancher/k3s/k3s.yaml
-    dest: "{{ ansible_env.HOME }}/.kube/k3s-config"
+    dest: "{{ local_user_home.stdout }}/.kube/k3s-config"
     flat: yes
   when: inventory_hostname == groups['k3s_servers'][0]
   become: false
 
 - name: Update kubeconfig server URL
   replace:
-    path: "{{ ansible_env.HOME }}/.kube/k3s-config"
+    path: "{{ local_user_home.stdout }}/.kube/k3s-config"
     regexp: 'https://127\.0\.0\.1:6443'
     replace: "https://{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}:6443"
   delegate_to: localhost
@@ -225,7 +233,7 @@
       - "Cluster token: {{ k3s_token }}"
       - "First server external IP: {{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}"
       - "To use kubectl locally:"
-      - "  export KUBECONFIG={{ ansible_env.HOME }}/.kube/k3s-config"
+      - "  export KUBECONFIG={{ local_user_home.stdout }}/.kube/k3s-config"
       - "  kubectl get nodes -o wide"
   run_once: true
   when: inventory_hostname == groups['k3s_servers'][0]
