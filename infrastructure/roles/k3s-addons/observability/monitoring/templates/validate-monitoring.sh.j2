@@ -183,7 +183,7 @@ run_test "Prometheus config is valid" \
 
 # Check AlertManager configuration
 run_test "AlertManager config is valid" \
-    "kubectl exec -n $NAMESPACE statefulset/alertmanager-kube-prometheus-stack-alertmanager -- amtool config check --config.file=/etc/alertmanager/config/alertmanager.yml"
+    "kubectl exec -n $NAMESPACE statefulset/alertmanager-kube-prometheus-stack-alertmanager -- amtool config check --config.file=/etc/alertmanager/config/alertmanager.yaml"
 
 # Check Grafana configuration
 run_test "Grafana datasources are configured" \

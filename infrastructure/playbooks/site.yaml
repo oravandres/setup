@@ -38,37 +38,37 @@
 
 # Phase 2: K3s Cluster Installation
 - name: "🔧 Phase 2: K3s Cluster Installation"
-  import_playbook: k3s_cluster.yml
+  import_playbook: k3s_cluster.yaml
   tags: ['k3s', 'cluster', 'phase2']
 
 # Phase 3: Core Networking Components
 - name: "🌐 Phase 3: Core Networking"
-  import_playbook: networking.yml
+  import_playbook: networking.yaml
   tags: ['networking', 'core', 'phase3']
 
 # Phase 4: Storage & GitOps
 - name: "💾 Phase 4: Storage & GitOps"
-  import_playbook: storage.yml
+  import_playbook: storage.yaml
   tags: ['storage', 'gitops', 'phase4']
 
 # Phase 5: Security & TLS
 - name: "🔒 Phase 5: Security & TLS"
-  import_playbook: security.yml
+  import_playbook: security.yaml
   tags: ['security', 'tls', 'phase5']
 
 # Phase 6: Observability
 - name: "📊 Phase 6: Observability"
-  import_playbook: observability.yml
+  import_playbook: observability.yaml
   tags: ['observability', 'monitoring', 'logging', 'phase6']
 
 # Phase 7: Specialized Workloads
 - name: "🎯 Phase 7: Specialized Workloads"
-  import_playbook: specialized.yml
+  import_playbook: specialized.yaml
   tags: ['specialized', 'gpu', 'chaos', 'phase7']
 
 # Phase 8: Backup & Maintenance
 - name: "🛡️ Phase 8: Backup & Maintenance"
-  import_playbook: maintenance.yml
+  import_playbook: maintenance.yaml
   tags: ['maintenance', 'backup', 'phase8']
 
 # Final verification and summary

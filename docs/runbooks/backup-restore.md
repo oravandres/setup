@@ -255,7 +255,7 @@ kubectl get nodes
 kubectl delete node failed-node-name
 
 # Add replacement node using Ansible
-ansible-playbook -i inventory/production/hosts.yml playbooks/add-node.yml
+ansible-playbook -i inventory/production/hosts.yaml playbooks/add-node.yaml
 ```
 
 ### Scenario 2: Control Plane Corruption
@@ -271,7 +271,7 @@ kubectl get nodes
 ```bash
 # 1. Rebuild cluster infrastructure with Ansible
 cd infrastructure/
-ansible-playbook -i inventory/production/hosts.yml playbooks/site.yml
+ansible-playbook -i inventory/production/hosts.yaml playbooks/site.yaml
 
 # 2. Restore etcd snapshot
 # Follow etcd restore procedure above

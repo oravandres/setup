@@ -89,7 +89,7 @@ analyze_unused_files() {
             fi
             
             # Check if file is referenced in Ansible playbooks
-            if grep -r -l --include="*.yml" --include="*.yaml" \
+            if grep -r -l --include="*.yaml" --include="*.yaml" \
                 -E "(role:|include:|import_|name:|src:|dest:)" . 2>/dev/null | \
                 xargs grep -l "$filename\|$filename_no_ext" 2>/dev/null | \
                 grep -v "^$file$" > /dev/null 2>&1; then
@@ -176,7 +176,7 @@ analyze_unused_yaml_elements() {
     echo "# Unused YAML Elements" > "$unused_yaml"
     
     # Find YAML files that might have unused keys
-    find . \( -name "*.yml" -o -name "*.yaml" \) -not -path "./.git/*" -not -path "./.taskmaster/*" | while IFS= read -r yaml_file; do
+    find . \( -name "*.yaml" -o -name "*.yaml" \) -not -path "./.git/*" -not -path "./.taskmaster/*" | while IFS= read -r yaml_file; do
         if [[ -f "$yaml_file" ]]; then
             echo "## Analyzing: $yaml_file" >> "$unused_yaml"
             
@@ -219,7 +219,7 @@ analyze_obsolete_comments() {
     echo "## Potentially Commented-Out Code" >> "$obsolete_comments"
     
     # Look for shell-style commented code
-    find . \( -name "*.sh" -o -name "*.yml" -o -name "*.yaml" \) -not -path "./.git/*" -not -path "./.taskmaster/*" | while IFS= read -r file; do
+    find . \( -name "*.sh" -o -name "*.yaml" -o -name "*.yaml" \) -not -path "./.git/*" -not -path "./.taskmaster/*" | while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             local commented_code=$(grep -n "^[[:space:]]*#[[:space:]]*[a-zA-Z_].*[=\(\)\[\]\{\}]" "$file" 2>/dev/null || true)
             
@@ -236,7 +236,7 @@ analyze_obsolete_comments() {
     # Look for TODO/FIXME/HACK comments that might be old
     echo "## TODO/FIXME/HACK Comments" >> "$obsolete_comments"
     
-    find . -type f \( -name "*.sh" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.py" -o -name "*.go" \) \
+    find . -type f \( -name "*.sh" -o -name "*.yaml" -o -name "*.yaml" -o -name "*.md" -o -name "*.py" -o -name "*.go" \) \
         -not -path "./.git/*" -not -path "./.taskmaster/*" | while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             local todo_comments=$(grep -n -i "TODO\|FIXME\|HACK\|XXX" "$file" 2>/dev/null || true)

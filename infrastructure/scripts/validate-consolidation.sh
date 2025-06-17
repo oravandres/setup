@@ -75,31 +75,31 @@ run_test "Core directory structure exists" "
 # Test 2: Ansible configuration file
 run_test "ansible.cfg exists and is valid" "
     [[ -f ansible.cfg ]] && 
-    grep -q 'inventory = inventory/hosts.yml' ansible.cfg"
+    grep -q 'inventory = inventory/hosts.yaml' ansible.cfg"
 
 # Test 3: Main inventory file
 run_test "Main inventory file exists" "
-    [[ -f inventory/hosts.yml ]]"
+    [[ -f inventory/hosts.yaml ]]"
 
 # Test 4: Group variables files
 run_test "Group variables files exist" "
-    [[ -f inventory/group_vars/all.yml ]] && 
-    [[ -f inventory/group_vars/control_plane.yml ]] && 
-    [[ -f inventory/group_vars/workers.yml ]]"
+    [[ -f inventory/group_vars/all.yaml ]] && 
+    [[ -f inventory/group_vars/control_plane.yaml ]] && 
+    [[ -f inventory/group_vars/workers.yaml ]]"
 
 # Test 5: Component-specific variables
 run_test "Component variables exist" "
-    [[ -f inventory/group_vars/metallb.yml ]] && 
-    [[ -f inventory/group_vars/ingress_nginx.yml ]]"
+    [[ -f inventory/group_vars/metallb.yaml ]] && 
+    [[ -f inventory/group_vars/ingress_nginx.yaml ]]"
 
 # Test 6: Main site playbook
 run_test "Main site playbook exists" "
-    [[ -f playbooks/site.yml ]]"
+    [[ -f playbooks/site.yaml ]]"
 
 # Test 7: Core playbooks exist
 run_test "Core playbooks exist" "
-    [[ -f playbooks/k3s_cluster.yml ]] && 
-    [[ -f playbooks/networking.yml ]]"
+    [[ -f playbooks/k3s_cluster.yaml ]] && 
+    [[ -f playbooks/networking.yaml ]]"
 
 # Test 8: Essential roles exist
 run_test "Essential roles exist" "
@@ -115,19 +115,19 @@ echo "=========================================="
 
 # Test 9: YAML syntax validation for inventory
 run_test "Inventory YAML syntax" "
-    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/hosts.yml\"))'"
+    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/hosts.yaml\"))'"
 
 # Test 10: YAML syntax validation for group_vars
 run_test "Group variables YAML syntax" "
-    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/all.yml\"))' &&
-    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/control_plane.yml\"))' &&
-    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/workers.yml\"))'"
+    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/all.yaml\"))' &&
+    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/control_plane.yaml\"))' &&
+    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/workers.yaml\"))'"
 
 # Test 11: Main playbooks YAML syntax
 run_test "Main playbooks YAML syntax" "
-    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/site.yml\"))' &&
-    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/k3s_cluster.yml\"))' &&
-    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/networking.yml\"))'"
+    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/site.yaml\"))' &&
+    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/k3s_cluster.yaml\"))' &&
+    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/networking.yaml\"))'"
 
 echo ""
 echo "=========================================="
@@ -142,15 +142,15 @@ if command -v ansible-playbook > /dev/null 2>&1; then
     
     # Test 13: Ansible playbook syntax check
     run_test "Site playbook syntax check" "
-        ansible-playbook --syntax-check playbooks/site.yml"
+        ansible-playbook --syntax-check playbooks/site.yaml"
     
     # Test 14: K3s cluster playbook syntax check
     run_test "K3s cluster playbook syntax check" "
-        ansible-playbook --syntax-check playbooks/k3s_cluster.yml"
+        ansible-playbook --syntax-check playbooks/k3s_cluster.yaml"
     
     # Test 15: Networking playbook syntax check
     run_test "Networking playbook syntax check" "
-        ansible-playbook --syntax-check playbooks/networking.yml"
+        ansible-playbook --syntax-check playbooks/networking.yaml"
 else
     log_warning "Ansible not found, skipping Ansible-specific validation"
 fi
@@ -195,7 +195,7 @@ echo "=========================================="
 
 # Test 20: No hardcoded secrets
 run_test "No hardcoded secrets in playbooks" "
-    ! grep -r -i 'password.*:.*[\"\\'].*[\"\\']\\|secret.*:.*[\"\\'].*[\"\\']\\|token.*:.*[\"\\'].*[\"\\']' playbooks/ --include='*.yml' --include='*.yaml' | grep -v 'vault_' | grep -v 'lookup(' | grep -v 'password_hash' | grep -v 'ssh_key' | grep -v 'default(' | grep -v 'admin123!' | grep -v 'postgres123' | grep -v 'appuser123'"
+    ! grep -r -i 'password.*:.*[\"\\'].*[\"\\']\\|secret.*:.*[\"\\'].*[\"\\']\\|token.*:.*[\"\\'].*[\"\\']' playbooks/ --include='*.yaml' --include='*.yaml' | grep -v 'vault_' | grep -v 'lookup(' | grep -v 'password_hash' | grep -v 'ssh_key' | grep -v 'default(' | grep -v 'admin123!' | grep -v 'postgres123' | grep -v 'appuser123'"
 
 # Test 21: Vault variables properly referenced
 run_test "Vault variables properly referenced" "
@@ -212,7 +212,7 @@ test_role_structure() {
     local role_path="playbooks/roles/$role_name"
     
     run_test "Role $role_name has proper structure" "
-        [[ -d $role_path/tasks ]] && [[ -f $role_path/tasks/main.yml ]]"
+        [[ -d $role_path/tasks ]] && [[ -f $role_path/tasks/main.yaml ]]"
 }
 
 # Test 22-27: Role structures
@@ -230,13 +230,13 @@ echo "=========================================="
 
 # Test 28: Playbook import structure
 run_test "Site playbook imports are valid" "
-    grep -q 'import_playbook.*k3s_cluster.yml' playbooks/site.yml &&
-    grep -q 'import_playbook.*networking.yml' playbooks/site.yml"
+    grep -q 'import_playbook.*k3s_cluster.yaml' playbooks/site.yaml &&
+    grep -q 'import_playbook.*networking.yaml' playbooks/site.yaml"
 
 # Test 29: Role dependencies
 run_test "Role dependencies are properly defined" "
-    grep -q 'include_role.*metallb' playbooks/networking.yml &&
-    grep -q 'include_role.*ingress-nginx' playbooks/networking.yml"
+    grep -q 'include_role.*metallb' playbooks/networking.yaml &&
+    grep -q 'include_role.*ingress-nginx' playbooks/networking.yaml"
 
 echo ""
 echo "=========================================="

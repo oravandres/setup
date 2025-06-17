@@ -125,7 +125,7 @@ kubectl get backups -n longhorn-system
 ```bash
 # Run Ansible playbook to add new nodes
 cd infrastructure/
-ansible-playbook -i inventory/production/hosts.yml playbooks/scale-cluster.yml --extra-vars "new_nodes=node4,node5"
+ansible-playbook -i inventory/production/hosts.yaml playbooks/scale-cluster.yaml --extra-vars "new_nodes=node4,node5"
 ```
 
 #### Scaling Applications

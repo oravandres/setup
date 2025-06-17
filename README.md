@@ -19,12 +19,12 @@ git clone <repository-url>
 cd setup
 
 # Configure your inventory
-cp infrastructure/inventory/dev/hosts.yml.example infrastructure/inventory/production/hosts.yml
-# Edit the hosts.yml file with your server details
+cp infrastructure/inventory/dev/hosts.yaml.example infrastructure/inventory/production/hosts.yaml
+# Edit the hosts.yaml file with your server details
 
 # Deploy the complete platform
 cd infrastructure
-ansible-playbook -i inventory/production/hosts.yml playbooks/site.yml
+ansible-playbook -i inventory/production/hosts.yaml playbooks/site.yaml
 ```
 
 ### 2. Access the Platform
@@ -150,7 +150,7 @@ setup/
 ./setup.sh --environment dev
 
 # Deploy to development cluster
-ansible-playbook -i inventory/dev/hosts.yml playbooks/site.yml
+ansible-playbook -i inventory/dev/hosts.yaml playbooks/site.yaml
 ```
 
 **For Production:**
@@ -159,7 +159,7 @@ ansible-playbook -i inventory/dev/hosts.yml playbooks/site.yml
 ./setup.sh --environment production
 
 # Deploy to production cluster
-ansible-playbook -i inventory/production/hosts.yml playbooks/site.yml --ask-vault-pass
+ansible-playbook -i inventory/production/hosts.yaml playbooks/site.yaml --ask-vault-pass
 ```
 
 ### 2. Application Deployment
@@ -289,7 +289,7 @@ kubectl get pods -n monitoring
 git checkout -b feature/new-component
 
 # Make changes and test locally
-ansible-playbook --syntax-check playbooks/site.yml
+ansible-playbook --syntax-check playbooks/site.yaml
 helm lint gitops/applications/my-app/base/
 
 # Commit and push

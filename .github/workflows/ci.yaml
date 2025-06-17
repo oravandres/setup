@@ -56,7 +56,7 @@ jobs:
       - name: Install Ansible and dependencies
         run: |
           pip install ansible ansible-lint molecule[docker] testinfra yamllint
-          ansible-galaxy install -r infrastructure/requirements.yml --ignore-errors || true
+          ansible-galaxy install -r infrastructure/requirements.yaml --ignore-errors || true
 
       - name: Run YAML Lint
         run: yamllint infrastructure/
@@ -67,9 +67,9 @@ jobs:
       - name: Run Ansible Syntax Check
         run: |
           cd infrastructure
-          ansible-playbook --syntax-check playbooks/site.yml
+          ansible-playbook --syntax-check playbooks/site.yaml
           # Check other critical playbooks
-          find playbooks/ -name "*.yml" -exec ansible-playbook --syntax-check {} \;
+          find playbooks/ -name "*.yaml" -exec ansible-playbook --syntax-check {} \;
 
   test-ansible:
     name: Test Ansible with Molecule
@@ -93,12 +93,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install ansible molecule[docker] testinfra docker
-          ansible-galaxy install -r infrastructure/requirements.yml --ignore-errors || true
+          ansible-galaxy install -r infrastructure/requirements.yaml --ignore-errors || true
 
       - name: Run Molecule tests
         run: |
           cd infrastructure/roles/${{ matrix.role }}
-          if [ -f molecule/default/molecule.yml ]; then
+          if [ -f molecule/default/molecule.yaml ]; then
             molecule test
           else
             echo "No Molecule scenario found for ${{ matrix.role }}, skipping..."

@@ -362,8 +362,8 @@ jobs:
     strategy:
       matrix:
         playbook:
-          - site.yml
-          - k3s-setup.yml
+          - site.yaml
+          - k3s-setup.yaml
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -377,12 +377,12 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install ansible ansible-lint molecule[docker]
-          ansible-galaxy install -r infrastructure/requirements.yml || true
+          ansible-galaxy install -r infrastructure/requirements.yaml || true
 
       - name: Create test inventory
         run: |
           mkdir -p test-inventory
-          cat > test-inventory/hosts.yml << EOF
+          cat > test-inventory/hosts.yaml << EOF
           all:
             children:
               k3s_cluster:
@@ -403,11 +403,11 @@ jobs:
         run: |
           cd infrastructure
           case "${{ matrix.playbook }}" in
-            "site.yml")
-              ansible-playbook --syntax-check -i ../test-inventory/hosts.yml playbooks/site.yml
+            "site.yaml")
+              ansible-playbook --syntax-check -i ../test-inventory/hosts.yaml playbooks/site.yaml
               ;;
-            "k3s-setup.yml")
-              ansible-playbook --syntax-check -i ../test-inventory/hosts.yml playbooks/k3s-setup.yml
+            "k3s-setup.yaml")
+              ansible-playbook --syntax-check -i ../test-inventory/hosts.yaml playbooks/k3s-setup.yaml
               ;;
           esac
 
@@ -415,11 +415,11 @@ jobs:
         run: |
           cd infrastructure
           case "${{ matrix.playbook }}" in
-            "site.yml")
-              ansible-lint playbooks/site.yml || true
+            "site.yaml")
+              ansible-lint playbooks/site.yaml || true
               ;;
-            "k3s-setup.yml")
-              ansible-lint playbooks/k3s-setup.yml || true
+            "k3s-setup.yaml")
+              ansible-lint playbooks/k3s-setup.yaml || true
               ;;
           esac
 
@@ -427,11 +427,11 @@ jobs:
         run: |
           cd infrastructure
           case "${{ matrix.playbook }}" in
-            "site.yml")
-              ansible-playbook --check -i ../test-inventory/hosts.yml playbooks/site.yml || echo "Check mode completed with warnings"
+            "site.yaml")
+              ansible-playbook --check -i ../test-inventory/hosts.yaml playbooks/site.yaml || echo "Check mode completed with warnings"
               ;;
-            "k3s-setup.yml")
-              ansible-playbook --check -i ../test-inventory/hosts.yml playbooks/k3s-setup.yml || echo "Check mode completed with warnings"
+            "k3s-setup.yaml")
+              ansible-playbook --check -i ../test-inventory/hosts.yaml playbooks/k3s-setup.yaml || echo "Check mode completed with warnings"
               ;;
           esac
 
