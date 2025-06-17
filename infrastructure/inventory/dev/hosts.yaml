@@ -1,0 +1,27 @@
+---
+# Development Environment Inventory
+# This is a simplified dev environment for testing and development
+
+all:
+  children:
+    k3s_cluster:
+      children:
+        control_plane:
+          hosts:
+            dream-machine:
+              ansible_host: localhost
+              ansible_connection: local
+              # Dev environment uses single node for simplicity
+        workers:
+          hosts:
+            # Dev environment can be single-node or use additional Pi nodes
+            # Uncomment below for multi-node dev setup
+            # pi-n1:
+            #   ansible_host: 192.168.1.101
+            #   ansible_user: andres
+    
+    # Development-specific groups
+    dev_nodes:
+      children:
+        control_plane:
+        workers: 

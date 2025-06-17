@@ -1,0 +1,109 @@
+---
+# MetalLB Load Balancer Configuration
+# Provides LoadBalancer services for the K3s cluster
+
+# MetalLB version and chart settings
+metallb_version: "v0.14.3"
+metallb_chart_version: "0.14.3"
+metallb_namespace: "metallb-system"
+metallb_create_namespace: true
+
+# Helm repository
+metallb_chart_repo: "https://metallb.github.io/metallb"
+metallb_chart_name: "metallb/metallb"
+
+# Address pool configuration
+metallb_address_pools:
+  - name: "default-pool"
+    protocol: "layer2"
+    addresses:
+      - "192.168.1.200-192.168.1.220"
+    auto_assign: true
+
+# L2 Advertisement configuration
+metallb_l2_advertisements:
+  - name: "default-l2-adv"
+    address_pools:
+      - "default-pool"
+    interfaces:
+      - "{{ ansible_default_ipv4.interface }}"
+
+# BGP configuration (disabled for Layer 2 mode)
+metallb_bgp_enabled: false
+metallb_bgp_peers: []
+metallb_bgp_communities: []
+
+# Speaker configuration
+metallb_speaker_enabled: true
+metallb_speaker_node_selectors: {}
+metallb_speaker_tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# Controller configuration
+metallb_controller_enabled: true
+metallb_controller_replicas: 1
+metallb_controller_node_selectors: {}
+metallb_controller_tolerations: []
+
+# Resource limits
+metallb_controller_resources:
+  limits:
+    cpu: "100m"
+    memory: "100Mi"
+  requests:
+    cpu: "100m"
+    memory: "100Mi"
+
+metallb_speaker_resources:
+  limits:
+    cpu: "100m"
+    memory: "100Mi"
+  requests:
+    cpu: "100m"
+    memory: "100Mi"
+
+# Security settings
+metallb_service_account_name: "metallb-controller"
+metallb_rbac_create: true
+metallb_psp_enabled: false
+
+# Monitoring integration
+metallb_prometheus_scrape: true
+metallb_prometheus_port: 7472
+metallb_prometheus_path: "/metrics"
+
+# Logging
+metallb_log_level: "info"
+metallb_log_format: "json"
+
+# Webhook configuration
+metallb_webhook_enabled: true
+metallb_webhook_port: 9443
+
+# Validation settings
+metallb_validate_config: true
+metallb_config_validation_timeout: "30s"
+
+# Load balancer specific settings
+metallb_load_balancer_class: "metallb"
+metallb_announce_load_balancer_ip: true
+
+# Service-specific configurations
+metallb_service_configs:
+  ingress_nginx:
+    pool: "default-pool"
+    sharing_key: "ingress-nginx"
+    allow_shared_ip: true
+  argocd_server:
+    pool: "default-pool"
+    sharing_key: "argocd"
+    allow_shared_ip: false
+  grafana:
+    pool: "default-pool"
+    sharing_key: "monitoring"
+    allow_shared_ip: true 

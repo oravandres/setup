@@ -1,0 +1,218 @@
+---
+- name: "Display Sealed Secrets deployment info"
+  debug:
+    msg:
+      - "🔐 Deploying Sealed Secrets Controller v{{ sealed_secrets_version }}"
+      - "Namespace: {{ sealed_secrets_namespace }}"
+      - "GitOps Directory: {{ gitops_secrets_directory }}"
+      - "Monitoring: {{ 'Enabled' if sealed_secrets_metrics.enabled else 'Disabled' }}"
+
+- name: "Create namespace for Sealed Secrets"
+  kubernetes.core.k8s:
+    name: "{{ sealed_secrets_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: "Add Bitnami Sealed Secrets Helm repository"
+  kubernetes.core.helm_repository:
+    name: sealed-secrets
+    repo_url: "{{ sealed_secrets_repository }}"
+
+- name: "Create Sealed Secrets Helm values"
+  copy:
+    content: |
+      # Sealed Secrets Controller Helm values
+      fullnameOverride: "{{ sealed_secrets_controller_name }}"
+      
+      image:
+        repository: "{{ sealed_secrets_image.repository }}"
+        tag: "{{ sealed_secrets_image.tag }}"
+        pullPolicy: "{{ sealed_secrets_image.pullPolicy }}"
+      
+      resources:
+        limits:
+          cpu: "{{ sealed_secrets_resources.limits.cpu }}"
+          memory: "{{ sealed_secrets_resources.limits.memory }}"
+        requests:
+          cpu: "{{ sealed_secrets_resources.requests.cpu }}"
+          memory: "{{ sealed_secrets_resources.requests.memory }}"
+      
+      securityContext:
+        runAsNonRoot: {{ sealed_secrets_security_context.runAsNonRoot }}
+        runAsUser: {{ sealed_secrets_security_context.runAsUser }}
+        fsGroup: {{ sealed_secrets_security_context.fsGroup }}
+      
+      service:
+        port: {{ sealed_secrets_service.port }}
+        type: "{{ sealed_secrets_service.type }}"
+      
+      serviceAccount:
+        create: {{ sealed_secrets_service_account.create }}
+        name: "{{ sealed_secrets_service_account.name }}"
+      
+      rbac:
+        create: {{ sealed_secrets_rbac.create }}
+        pspEnabled: {{ sealed_secrets_rbac.pspEnabled }}
+      
+      {% if sealed_secrets_metrics.enabled %}
+      metrics:
+        port: {{ sealed_secrets_metrics.port }}
+        serviceMonitor:
+          enabled: {{ sealed_secrets_metrics.service_monitor.enabled }}
+          namespace: "{{ sealed_secrets_metrics.service_monitor.namespace }}"
+          labels:
+            {% for key, value in sealed_secrets_metrics.service_monitor.labels.items() %}
+            {{ key }}: "{{ value }}"
+            {% endfor %}
+      {% endif %}
+      
+      {% if sealed_secrets_node_selector %}
+      nodeSelector:
+        {% for key, value in sealed_secrets_node_selector.items() %}
+        {{ key }}: "{{ value }}"
+        {% endfor %}
+      {% endif %}
+      
+      {% if sealed_secrets_tolerations %}
+      tolerations:
+        {% for toleration in sealed_secrets_tolerations %}
+        - {{ toleration | to_yaml }}
+        {% endfor %}
+      {% endif %}
+      
+      # Additional controller arguments
+      {% if sealed_secrets_additional_args %}
+      args:
+        {% for arg in sealed_secrets_additional_args %}
+        - "{{ arg }}"
+        {% endfor %}
+      {% endif %}
+      
+      # Log level
+      extraEnv:
+        - name: "LOG_LEVEL"
+          value: "{{ sealed_secrets_log_level }}"
+      
+      # Pod annotations
+      {% if sealed_secrets_pod_annotations %}
+      podAnnotations:
+        {% for key, value in sealed_secrets_pod_annotations.items() %}
+        {{ key }}: "{{ value }}"
+        {% endfor %}
+      {% endif %}
+    dest: /tmp/sealed-secrets-values.yaml
+    mode: '0644'
+
+- name: "Deploy Sealed Secrets Controller"
+  kubernetes.core.helm:
+    name: sealed-secrets
+    chart_ref: sealed-secrets/sealed-secrets
+    chart_version: "{{ sealed_secrets_chart_version }}"
+    release_namespace: "{{ sealed_secrets_namespace }}"
+    create_namespace: true
+    values_files:
+      - /tmp/sealed-secrets-values.yaml
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    wait: true
+    timeout: 300
+
+- name: "Wait for Sealed Secrets Controller to be ready"
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ sealed_secrets_namespace }}"
+    label_selectors:
+      - name=sealed-secrets-controller
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: sealed_secrets_pods
+  until: sealed_secrets_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+  retries: 20
+  delay: 15
+
+- name: "Verify Sealed Secrets Controller service"
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: "{{ sealed_secrets_controller_name }}"
+    namespace: "{{ sealed_secrets_namespace }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: sealed_secrets_service_info
+
+- name: "Display Sealed Secrets Controller status"
+  debug:
+    msg:
+      - "✅ Sealed Secrets Controller deployed successfully"
+      - "Controller Status: {{ sealed_secrets_pods.resources[0].status.phase }}"
+      - "Service: {{ sealed_secrets_service_info.resources[0].metadata.name }}"
+      - "Service IP: {{ sealed_secrets_service_info.resources[0].spec.clusterIP }}"
+      - "Port: {{ sealed_secrets_service_info.resources[0].spec.ports[0].port }}"
+
+- name: "Get Sealed Secrets public key"
+  shell: |
+    kubectl get secret -n {{ sealed_secrets_namespace }} -l sealedsecrets.bitnami.com/sealed-secrets-key=active \
+      -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: sealed_secrets_public_key
+  retries: 5
+  delay: 10
+
+- name: "Save public key for kubeseal"
+  copy:
+    content: "{{ sealed_secrets_public_key.stdout }}"
+    dest: "/tmp/sealed-secrets-public.pem"
+    mode: '0644'
+
+- name: "Create GitOps secrets directory structure"
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ gitops_secrets_directory }}"
+    - "{{ gitops_secrets_directory }}/dev"
+    - "{{ gitops_secrets_directory }}/staging"
+    - "{{ gitops_secrets_directory }}/production"
+    - "{{ gitops_secrets_directory }}/shared"
+  when: create_gitops_structure
+
+- name: "Install kubeseal CLI tool"
+  get_url:
+    url: "https://github.com/bitnami-labs/sealed-secrets/releases/download/{{ sealed_secrets_version }}/kubeseal-{{ sealed_secrets_version[1:] }}-linux-amd64.tar.gz"
+    dest: "/tmp/kubeseal.tar.gz"
+    mode: '0644'
+
+- name: "Extract kubeseal CLI"
+  unarchive:
+    src: "/tmp/kubeseal.tar.gz"
+    dest: "/tmp"
+    remote_src: yes
+
+- name: "Install kubeseal to /usr/local/bin"
+  copy:
+    src: "/tmp/kubeseal"
+    dest: "/usr/local/bin/kubeseal"
+    mode: '0755'
+    remote_src: yes
+  become: true
+
+- name: "Verify kubeseal installation"
+  command: kubeseal --version
+  register: kubeseal_version
+  changed_when: false
+
+- name: "Display installation summary"
+  debug:
+    msg:
+      - "🔐 Sealed Secrets Installation Complete"
+      - "Controller Version: {{ sealed_secrets_version }}"
+      - "Kubeseal Version: {{ kubeseal_version.stdout }}"
+      - "Public Key Location: /tmp/sealed-secrets-public.pem"
+      - "GitOps Secrets Directory: {{ gitops_secrets_directory }}"
+      - ""
+      - "📋 Next Steps:"
+      - "1. Use 'kubeseal' to create sealed secrets"
+      - "2. Store sealed secrets in {{ gitops_secrets_directory }}/"
+      - "3. Apply sealed secrets via GitOps workflow" 

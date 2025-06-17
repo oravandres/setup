@@ -1,0 +1,73 @@
+---
+# Global variables for DEV environment
+# Development-specific settings with relaxed constraints
+
+# Ansible connection settings
+ansible_python_interpreter: /usr/bin/python3
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+ansible_ssh_private_key_file: "/home/andres/.ssh/id_ed25519"
+
+# Common paths and directories
+k3s_config_dir: /etc/rancher/k3s
+k3s_data_dir: /var/lib/rancher/k3s
+k3s_bin_dir: /usr/local/bin
+kubeconfig_path: "{{ ansible_env.HOME }}/.kube/k3s-config-dev"
+
+# Network configuration (dev-specific ranges)
+cluster_cidr: "10.52.0.0/16"  # Different from prod to avoid conflicts
+service_cidr: "10.53.0.0/16"
+cluster_dns: "10.53.0.10"
+cluster_domain: "dev.local"
+
+# Local network settings (dev ranges)
+local_network: "192.168.1.0/24"
+metallb_ip_range: "192.168.1.240-192.168.1.250"  # Dev IP range
+vip_address: "192.168.1.242"  # Dev HAProxy VIP
+
+# Common package lists
+common_packages:
+  - curl
+  - wget
+  - git
+  - htop
+  - iotop
+  - vim
+  - jq
+  - unzip
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Kubernetes versions and compatibility
+k3s_version: "v1.28.5+k3s1"
+kubernetes_version: "1.28.5"
+
+# Container runtime settings
+containerd_config_dir: /etc/containerd
+containerd_data_dir: /var/lib/containerd
+
+# Logging and monitoring (dev settings)
+log_level: debug  # More verbose for development
+enable_metrics: true
+metrics_port: 10250
+
+# Security settings (relaxed for dev)
+disable_cloud_controller: true
+disable_network_policy: true  # Disabled for easier dev testing
+enable_psp: false
+
+# Backup and maintenance (relaxed for dev)
+backup_retention_days: 3  # Shorter retention for dev
+maintenance_window: "01:00-02:00"
+timezone: "UTC"
+
+# Development and debugging (enabled for dev)
+debug_mode: true
+verbose_logging: true
+
+# Feature flags (selective for dev)
+enable_gpu_support: false  # Disabled for dev simplicity
+enable_chaos_testing: false  # Disabled for dev stability
+enable_monitoring: true
+enable_logging: true
+enable_backup: false  # Disabled for dev 

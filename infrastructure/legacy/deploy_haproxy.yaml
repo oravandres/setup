@@ -1,0 +1,49 @@
+---
+- name: Deploy HAProxy for K3s API Load Balancing
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  
+  tasks:
+    - name: Display deployment information
+      debug:
+        msg: |
+          🚀 Deploying HAProxy Load Balancer for K3s API
+          
+          📋 Deployment Details:
+          - LoadBalancer IP: 192.168.1.202
+          - Backend Servers:
+            * dream-machine: 192.168.1.52:6443
+            * pi-c1: 192.168.1.145:6443
+            * pi-c2: 192.168.1.162:6443
+          - Replicas: 2 (HA configuration)
+          - Health Checks: TCP with TLS validation
+          - Stats Dashboard: http://haproxy.k3s.local/stats
+          
+          🎯 Purpose: Eliminate single point of failure in K3s API access
+
+    - name: Deploy HAProxy
+      include_role:
+        name: ha-proxy
+      tags:
+        - haproxy
+        - load-balancer
+        - k3s-api
+
+    - name: Deployment Summary
+      debug:
+        msg: |
+          ✅ HAProxy Load Balancer Deployment Complete!
+          
+          🔗 Access Points:
+          - K3s API (Load Balanced): https://192.168.1.202:6443
+          - HAProxy Stats: http://haproxy.k3s.local/stats
+          - Direct Stats: http://192.168.1.202:8404/stats
+          
+          🔧 Next Steps:
+          1. Update kubeconfig to use 192.168.1.202:6443
+          2. Test API access with master nodes offline
+          3. Verify all three backends are healthy
+          
+          🎉 Single Point of Failure ELIMINATED! 

@@ -1,0 +1,376 @@
+name: CI - Infrastructure & GitOps Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  ANSIBLE_FORCE_COLOR: 1
+  ANSIBLE_HOST_KEY_CHECKING: false
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      ansible: ${{ steps.changes.outputs.ansible }}
+      gitops: ${{ steps.changes.outputs.gitops }}
+      docs: ${{ steps.changes.outputs.docs }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect file changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            ansible:
+              - 'infrastructure/**'
+              - 'ansible.cfg'
+            gitops:
+              - 'gitops/**'
+            docs:
+              - 'docs/**'
+              - '*.md'
+
+  lint-ansible:
+    name: Lint Ansible
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ansible == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Ansible and dependencies
+        run: |
+          pip install ansible ansible-lint molecule[docker] testinfra yamllint
+          ansible-galaxy install -r infrastructure/requirements.yml --ignore-errors || true
+
+      - name: Run YAML Lint
+        run: yamllint infrastructure/
+
+      - name: Run Ansible Lint
+        run: ansible-lint infrastructure/
+
+      - name: Run Ansible Syntax Check
+        run: |
+          cd infrastructure
+          ansible-playbook --syntax-check playbooks/site.yml
+          # Check other critical playbooks
+          find playbooks/ -name "*.yml" -exec ansible-playbook --syntax-check {} \;
+
+  test-ansible:
+    name: Test Ansible with Molecule
+    runs-on: ubuntu-latest
+    needs: [detect-changes, lint-ansible]
+    if: needs.detect-changes.outputs.ansible == 'true'
+    strategy:
+      matrix:
+        role:
+          - core/base
+          - k3s-addons/cluster
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible molecule[docker] testinfra docker
+          ansible-galaxy install -r infrastructure/requirements.yml --ignore-errors || true
+
+      - name: Run Molecule tests
+        run: |
+          cd infrastructure/roles/${{ matrix.role }}
+          if [ -f molecule/default/molecule.yml ]; then
+            molecule test
+          else
+            echo "No Molecule scenario found for ${{ matrix.role }}, skipping..."
+          fi
+        env:
+          MOLECULE_NO_LOG: false
+
+  validate-gitops:
+    name: Validate GitOps Manifests
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.gitops == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Install validation tools
+        run: |
+          # Install kubeval
+          curl -sL https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz | tar xz
+          sudo mv kubeval /usr/local/bin/
+
+          # Install kube-linter
+          curl -sSfL https://raw.githubusercontent.com/stackrox/kube-linter/main/scripts/go-install.sh | bash
+          sudo mv bin/kube-linter /usr/local/bin/
+
+          # Install yamllint
+          pip install yamllint
+
+      - name: Run YAML Lint on GitOps files
+        run: yamllint gitops/
+
+      - name: Validate Helm Charts
+        run: |
+          # Lint infrastructure Helm charts
+          find gitops/infrastructure/charts -name "Chart.yaml" -exec dirname {} \; | while read chart; do
+            echo "Linting $chart"
+            helm lint "$chart"
+          done
+
+          # Lint application Helm charts
+          find gitops/applications -name "Chart.yaml" -exec dirname {} \; | while read chart; do
+            echo "Linting $chart"
+            helm lint "$chart"
+          done
+
+      - name: Render and Validate Manifests
+        run: |
+          # Create temp directory for rendered manifests
+          mkdir -p /tmp/rendered-manifests
+
+          # Render infrastructure Helm charts
+          find gitops/infrastructure/charts -name "Chart.yaml" -exec dirname {} \; | while read chart; do
+            chart_name=$(basename "$chart")
+            echo "Rendering $chart_name"
+            helm template "$chart_name" "$chart" --output-dir /tmp/rendered-manifests/
+          done
+
+          # Validate rendered manifests with kubeval
+          find /tmp/rendered-manifests -name "*.yaml" -exec kubeval --strict --ignore-missing-schemas {} \;
+
+          # Validate with kube-linter
+          find /tmp/rendered-manifests -name "*.yaml" -exec kube-linter lint {} \;
+
+      - name: Validate ArgoCD Applications
+        run: |
+          # Check ArgoCD ApplicationSet syntax
+          find gitops/argocd -name "*.yaml" -exec kubeval --strict {} \;
+
+          # Validate application manifests
+          find gitops/applications -name "*.yaml" -exec kubeval --strict --ignore-missing-schemas {} \;
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.gitops == 'true' || needs.detect-changes.outputs.ansible == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  lint-docs:
+    name: Lint Documentation
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docs == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install markdownlint
+        run: npm install -g markdownlint-cli
+
+      - name: Run markdownlint
+        run: markdownlint docs/ *.md
+
+      - name: Check for broken links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          use-verbose-mode: 'yes'
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [validate-gitops, lint-ansible]
+    if: github.event_name == 'pull_request' && (needs.detect-changes.outputs.gitops == 'true' || needs.detect-changes.outputs.ansible == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.4.0
+        with:
+          cluster_name: test-cluster
+          wait: 300s
+
+      - name: Deploy core infrastructure components
+        run: |
+          # Deploy MetalLB (using kind's network)
+          kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+          kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb --timeout=300s
+
+          # Configure MetalLB address pool for kind
+          cat <<EOF | kubectl apply -f -
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: example
+            namespace: metallb-system
+          spec:
+            addresses:
+            - 172.18.255.200-172.18.255.250
+          ---
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: empty
+            namespace: metallb-system
+          EOF
+
+          # Deploy NGINX Ingress Controller
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=300s
+
+      - name: Test sample application deployment
+        run: |
+          # Deploy a sample application to test the infrastructure
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: test-app
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: test-app
+            template:
+              metadata:
+                labels:
+                  app: test-app
+              spec:
+                containers:
+                - name: nginx
+                  image: nginx:alpine
+                  ports:
+                  - containerPort: 80
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: test-app-service
+          spec:
+            selector:
+              app: test-app
+            ports:
+            - port: 80
+              targetPort: 80
+            type: ClusterIP
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: test-app-ingress
+            annotations:
+              nginx.ingress.kubernetes.io/rewrite-target: /
+          spec:
+            ingressClassName: nginx
+            rules:
+            - host: test-app.local
+              http:
+                paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: test-app-service
+                      port:
+                        number: 80
+          EOF
+
+          # Wait for deployment to be ready
+          kubectl wait --for=condition=available --timeout=300s deployment/test-app
+
+          # Test ingress connectivity
+          kubectl get ingress test-app-ingress
+          kubectl get svc -n ingress-nginx
+
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [lint-ansible, test-ansible, validate-gitops, security-scan, lint-docs, integration-test]
+    if: always()
+    steps:
+      - name: Set job status
+        id: job-status
+        run: |
+          if [[ "${{ needs.lint-ansible.result }}" == "failure" || 
+                "${{ needs.test-ansible.result }}" == "failure" || 
+                "${{ needs.validate-gitops.result }}" == "failure" || 
+                "${{ needs.security-scan.result }}" == "failure" || 
+                "${{ needs.lint-docs.result }}" == "failure" || 
+                "${{ needs.integration-test.result }}" == "failure" ]]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create summary
+        run: |
+          echo "## CI Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Ansible Linting | ${{ needs.lint-ansible.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ansible Testing | ${{ needs.test-ansible.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitOps Validation | ${{ needs.validate-gitops.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scanning | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Documentation | ${{ needs.lint-docs.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-test.result }} |" >> $GITHUB_STEP_SUMMARY 

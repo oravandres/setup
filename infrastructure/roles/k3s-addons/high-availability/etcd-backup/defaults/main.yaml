@@ -1,0 +1,76 @@
+---
+# etcd Backup & Restore Role - Default Variables
+
+# Backup scheduling
+backup_schedule: "0 2 * * *"        # Daily at 2 AM UTC
+backup_timezone: "UTC"              # Timezone for backup operations
+
+# Storage configuration
+backup_storage_type: "minio"        # Storage backend type
+backup_bucket_name: "k3s-backups"   # Bucket/container name (override externally)
+backup_image: "rclone/rclone:1.67.0" # Container image for backup operations
+
+# Encryption settings
+backup_encryption_enabled: true     # Enable GPG encryption for backups
+# backup_encryption_passphrase: ""  # Required - set externally for security
+
+# Retention policies
+daily_retention_days: 7             # Keep daily backups for 7 days
+weekly_retention_days: 30           # Keep weekly backups for 30 days
+minimum_weekly_backups: 4           # Minimum weekly backups to keep
+
+# rclone configuration template (override externally with actual credentials)
+# rclone_config: |
+#   [minio]
+#   type = s3
+#   provider = Other
+#   env_auth = false
+#   access_key_id = YOUR_ACCESS_KEY
+#   secret_access_key = YOUR_SECRET_KEY
+#   endpoint = http://your-minio-host:9000
+#   bucket_acl = private
+
+# Advanced backup configuration
+backup_compression_enabled: true    # Enable compression before encryption
+backup_verify_integrity: true       # Verify backup integrity after creation
+backup_notification_enabled: false  # Enable backup completion notifications
+
+# Restore configuration
+restore_timeout: 3600               # Restore operation timeout in seconds
+restore_verification_enabled: true  # Verify cluster state after restore
+
+# Monitoring and alerting
+backup_monitoring_enabled: true     # Enable backup job monitoring
+backup_alert_on_failure: true       # Send alerts on backup failures
+
+# Example rclone configurations for different storage backends
+rclone_minio_config: |
+  [minio]
+  type = s3
+  provider = Other
+  env_auth = false
+  access_key_id = {{ minio_access_key | default('minioadmin') }}
+  secret_access_key = {{ minio_secret_key | default('minioadmin') }}
+  endpoint = {{ minio_endpoint | default('http://minio.local:9000') }}
+  bucket_acl = private
+
+rclone_aws_s3_config: |
+  [aws]
+  type = s3
+  provider = AWS
+  env_auth = false
+  access_key_id = {{ aws_access_key | default('') }}
+  secret_access_key = {{ aws_secret_key | default('') }}
+  region = {{ aws_region | default('us-east-1') }}
+
+rclone_gcs_config: |
+  [gcs]
+  type = google cloud storage
+  project_number = {{ gcs_project_number | default('') }}
+  service_account_file = /etc/gcs-credentials/service-account.json
+  location = {{ gcs_location | default('US') }}
+
+# Backup validation settings
+validation_enabled: true            # Enable backup validation tests
+validation_test_restore: false      # Perform test restore validation (requires separate cluster)
+validation_retention_check: true    # Validate retention policy enforcement 

@@ -1,0 +1,48 @@
+---
+extends: default
+
+rules:
+  # Allow long lines for readability in some contexts
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # Allow truthy values for Ansible and Kubernetes
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+
+  # Allow document start for Kubernetes manifests
+  document-start:
+    present: false
+
+  # Relax indentation rules for complex structures
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Allow empty lines for readability
+  empty-lines:
+    max: 2
+    max-start: 1
+    max-end: 1
+
+  # Allow comments for documentation
+  comments:
+    min-spaces-from-content: 1
+
+  # Allow brackets for lists in some contexts
+  brackets:
+    max-spaces-inside: 1
+    max-spaces-inside-empty: 0
+
+  # Allow braces for dictionaries
+  braces:
+    max-spaces-inside: 1
+    max-spaces-inside-empty: 0
+
+ignore: |
+  *.encrypted
+  secrets/
+  .git/ 

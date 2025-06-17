@@ -1,0 +1,30 @@
+---
+# Staging Environment Inventory
+# Uses a subset of production nodes for staging/testing
+
+all:
+  children:
+    k3s_cluster:
+      children:
+        control_plane:
+          hosts:
+            dream-machine:
+              ansible_host: localhost
+              ansible_connection: local
+            pi-c1:
+              ansible_host: 192.168.1.105
+              ansible_user: andres
+        workers:
+          hosts:
+            pi-n1:
+              ansible_host: 192.168.1.101
+              ansible_user: pi
+            pi-n2:
+              ansible_host: 192.168.1.102
+              ansible_user: pi
+    
+    # Staging-specific groups
+    staging_nodes:
+      children:
+        control_plane:
+        workers: 

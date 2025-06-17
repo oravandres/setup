@@ -1,0 +1,71 @@
+---
+# Specialized Workloads Playbook
+# Deploy GPU support and chaos testing platform
+
+- name: "🎮 Deploy GPU Support (NVIDIA Device Plugin)"
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  tags: ['specialized', 'gpu']
+  
+  tasks:
+    - name: "Include GPU role"
+      include_role:
+        name: gpu
+      when: 
+        - inventory_hostname in groups['k3s_cluster']
+        - gpu_support_enabled | default(false)
+
+- name: "🔥 Deploy Chaos Testing Platform (LitmusChaos)"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['specialized', 'chaos']
+  
+  tasks:
+    - name: "Include chaos-testing role"
+      include_role:
+        name: chaos-testing
+      when: inventory_hostname in groups['control_plane']
+
+- name: "✅ Verify Specialized Workloads Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tags: ['verify']
+  
+  tasks:
+    - name: "Check GPU device plugin status"
+      shell: |
+        kubectl get pods -n kube-system -l name=nvidia-device-plugin-ds --no-headers | wc -l
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: gpu_plugin_count
+      changed_when: false
+      failed_when: false
+
+    - name: "Wait for LitmusChaos to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=litmus -n litmus --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: litmus_status
+      failed_when: litmus_status.rc != 0
+      changed_when: false
+
+    - name: "Display specialized workloads status"
+      debug:
+        msg:
+          - "🎮 GPU Device Plugin: {{ 'Deployed (' + gpu_plugin_count.stdout + ' nodes)' if gpu_plugin_count.stdout != '0' else 'Not deployed' }}"
+          - "🔥 LitmusChaos: {{ 'Ready' if litmus_status.rc == 0 else 'Failed' }}"
+          - ""
+          - "🌐 Access URLs:"
+          - "  • LitmusChaos Portal: https://chaos.k3s.local"
+          - ""
+          - "🎯 Specialized Features:"
+          - "  • GPU workload support (if enabled)"
+          - "  • Chaos engineering experiments"
+          - "  • Resilience testing platform"
+          - "  • Fault injection capabilities" 

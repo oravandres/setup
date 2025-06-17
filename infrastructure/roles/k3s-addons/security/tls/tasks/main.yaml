@@ -1,0 +1,154 @@
+---
+# TLS Automation Role - Orchestrates cert-manager v1.15 and external-dns v0.14
+- name: Display TLS automation configuration
+  debug:
+    msg:
+      - "=== TLS Automation Configuration ==="
+      - "cert-manager: v{{ cert_manager_chart_version | default('1.15.0') }}"
+      - "external-dns: v{{ external_dns_chart_version | default('1.14.1') }}"
+      - "Domain: {{ base_domain | default('not configured') }}"
+      - "DNS Zones: {{ dns_zones | default([]) | join(', ') }}"
+      - "Certificate Issuer: {{ cert_issuer | default('letsencrypt-staging') }}"
+  run_once: true
+
+- name: Validate required variables
+  assert:
+    that:
+      - cloudflare_api_token is defined
+      - cloudflare_api_token | length > 0
+      - letsencrypt_email is defined  
+      - letsencrypt_email | length > 0
+      - dns_zones is defined
+      - dns_zones | length > 0
+    fail_msg: "Required variables missing: cloudflare_api_token, letsencrypt_email, dns_zones"
+    success_msg: "Required TLS automation variables validated"
+
+- name: Deploy cert-manager v1.15
+  include_role:
+    name: cert-manager
+  vars:
+    cert_manager_chart_version: "{{ cert_manager_chart_version | default('v1.15.0') }}"
+
+- name: Deploy external-dns v0.14
+  include_role:
+    name: external-dns
+  vars:
+    external_dns_chart_version: "{{ external_dns_chart_version | default('1.14.1') }}"
+    external_dns_values: "{{ external_dns_values | combine({'domainFilters': dns_zones}) }}"
+
+- name: Wait for cert-manager to be fully ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: cert-manager
+    label_selectors:
+      - app.kubernetes.io/name=cert-manager
+  register: cert_manager_status
+  until: >
+    cert_manager_status.resources | length > 0 and
+    (cert_manager_status.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (cert_manager_status.resources | length)
+  retries: 30
+  delay: 10
+
+- name: Wait for external-dns to be fully ready  
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: external-dns
+    label_selectors:
+      - app.kubernetes.io/name=external-dns
+  register: external_dns_status
+  until: >
+    external_dns_status.resources | length > 0 and
+    (external_dns_status.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (external_dns_status.resources | length)
+  retries: 30
+  delay: 10
+
+- name: Create example TLS-enabled service (for testing)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: tls-test-service
+        namespace: default
+        annotations:
+          external-dns.alpha.kubernetes.io/hostname: "tls-test.{{ base_domain }}"
+      spec:
+        type: LoadBalancer
+        selector:
+          app: tls-test
+        ports:
+          - port: 80
+            targetPort: 8080
+            name: http
+    state: present
+  when: create_test_service | default(false) | bool
+
+- name: Create example Ingress with TLS (for testing)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: tls-test-ingress
+        namespace: default
+        annotations:
+          kubernetes.io/ingress.class: nginx
+          cert-manager.io/cluster-issuer: "{{ cert_issuer | default('letsencrypt-staging') }}"
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      spec:
+        tls:
+          - hosts:
+              - "tls-test.{{ base_domain }}"
+            secretName: tls-test-secret
+        rules:
+          - host: "tls-test.{{ base_domain }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: tls-test-service
+                      port:
+                        number: 80
+    state: present
+  when: create_test_ingress | default(false) | bool and base_domain is defined
+
+- name: Deploy comprehensive TLS validation script
+  template:
+    src: validate-tls-automation.sh.j2
+    dest: /usr/local/bin/validate-tls-automation
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Run comprehensive TLS automation validation
+  command: /usr/local/bin/validate-tls-automation
+  register: tls_validation
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Display TLS automation validation results
+  debug:
+    var: tls_validation.stdout_lines
+  run_once: true
+
+- name: Display TLS automation summary
+  debug:
+    msg:
+      - "=== TLS Automation Deployment Complete ==="
+      - "✅ cert-manager v1.15 deployed and validated"
+      - "✅ external-dns v0.14 deployed and validated"
+      - "✅ ClusterIssuers configured for Let's Encrypt"
+      - "✅ Cloudflare DNS integration ready"
+      - ""
+      - "Next steps:"
+      - "1. Verify DNS zones in Cloudflare dashboard"
+      - "2. Create Ingress resources with TLS annotations"
+      - "3. Monitor certificate issuance in cert-manager logs"
+      - "4. Check DNS record creation in external-dns logs"
+  run_once: true 

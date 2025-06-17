@@ -1,0 +1,352 @@
+---
+# Monitoring Stack Role - Default Variables
+
+# Chart versions
+kube_prometheus_chart_version: "61.1.1"    # kube-prometheus-stack chart version
+prometheus_version: "v2.53.0"              # Prometheus version
+grafana_version: "11.1.0"                  # Grafana version
+alertmanager_version: "v0.27.0"            # AlertManager version
+
+# Domain configuration
+grafana_domain: "grafana.local"            # Domain for Grafana UI (override externally)
+prometheus_domain: "prometheus.local"      # Domain for Prometheus UI (override externally) 
+alertmanager_domain: "alertmanager.local"  # Domain for AlertManager UI (override externally)
+
+# Ingress configuration
+create_grafana_ingress: true               # Create ingress for Grafana
+create_prometheus_ingress: true            # Create ingress for Prometheus
+create_alertmanager_ingress: true          # Create ingress for AlertManager
+grafana_cert_issuer: "letsencrypt-staging" # cert-manager ClusterIssuer for Grafana
+prometheus_cert_issuer: "letsencrypt-staging" # cert-manager ClusterIssuer for Prometheus
+alertmanager_cert_issuer: "letsencrypt-staging" # cert-manager ClusterIssuer for AlertManager
+
+# Authentication configuration
+grafana_admin_user: "admin"                # Grafana admin username
+grafana_admin_password: "admin123!"        # Grafana admin password (change externally)
+
+# Storage configuration
+monitoring_storage_enabled: true           # Enable persistent storage for monitoring stack
+prometheus_storage_size: "50Gi"            # Prometheus data storage size
+grafana_storage_size: "10Gi"               # Grafana storage size
+alertmanager_storage_size: "5Gi"           # AlertManager storage size
+storage_class: "longhorn"                  # Storage class to use (defaults to longhorn)
+
+# Retention and performance
+prometheus_retention: "30d"                # Prometheus data retention period
+prometheus_retention_size: "45GiB"         # Prometheus storage size limit
+prometheus_replicas: 1                     # Number of Prometheus replicas
+alertmanager_replicas: 1                   # Number of AlertManager replicas
+
+# ServiceMonitor configuration
+enable_argocd_monitoring: false            # Enable ArgoCD metrics collection
+enable_longhorn_monitoring: true           # Enable Longhorn metrics collection
+enable_cert_manager_monitoring: true       # Enable cert-manager metrics collection
+
+# Resource configuration
+prometheus_resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 2000m
+    memory: 8Gi
+
+grafana_resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+alertmanager_resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# kube-prometheus-stack Helm values
+kube_prometheus_values:
+  fullnameOverride: "kube-prometheus-stack"
+  
+  # Global configuration
+  global:
+    rbac:
+      create: true
+      pspEnabled: false
+  
+  # Prometheus configuration
+  prometheus:
+    enabled: true
+    prometheusSpec:
+      replicas: "{{ prometheus_replicas | default(1) }}"
+      retention: "{{ prometheus_retention | default('30d') }}"
+      retentionSize: "{{ prometheus_retention_size | default('45GiB') }}"
+      
+      # Resource configuration
+      resources: "{{ prometheus_resources }}"
+      
+      # Storage configuration
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: "{{ storage_class | default('longhorn') }}"
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: "{{ prometheus_storage_size | default('50Gi') }}"
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      
+      # Service monitor selector
+      serviceMonitorSelectorNilUsesHelmValues: false
+      podMonitorSelectorNilUsesHelmValues: false
+      ruleSelectorNilUsesHelmValues: false
+      
+      # Additional scrape configs for custom metrics
+      additionalScrapeConfigs: []
+  
+  # Grafana configuration
+  grafana:
+    enabled: true
+    
+    # Admin credentials from secret
+    admin:
+      existingSecret: grafana-admin-secret
+      userKey: admin-user
+      passwordKey: admin-password
+    
+    # Resource configuration
+    resources: "{{ grafana_resources }}"
+    
+    # Persistence configuration
+    persistence:
+      type: pvc
+      enabled: "{{ monitoring_storage_enabled | default(true) }}"
+      storageClassName: "{{ storage_class | default('longhorn') }}"
+      accessModes:
+        - ReadWriteOnce
+      size: "{{ grafana_storage_size | default('10Gi') }}"
+    
+    # Service configuration
+    service:
+      type: ClusterIP
+      port: 80
+    
+    # Grafana configuration
+    grafana.ini:
+      server:
+        root_url: "https://{{ grafana_domain | default('grafana.local') }}/"
+        serve_from_sub_path: false
+      security:
+        admin_user: "{{ grafana_admin_user | default('admin') }}"
+        cookie_secure: true
+        cookie_samesite: lax
+      users:
+        allow_sign_up: false
+        auto_assign_org: true
+        auto_assign_org_role: Viewer
+      auth.anonymous:
+        enabled: false
+      log:
+        mode: console
+        level: info
+    
+    # Default dashboards
+    defaultDashboardsEnabled: true
+    
+    # Additional data sources
+    additionalDataSources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.logging.svc.cluster.local
+        isDefault: false
+        editable: true
+    
+    # Dashboard providers
+    dashboardProviders:
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+        - name: 'kubernetes'
+          orgId: 1
+          folder: 'Kubernetes'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/kubernetes
+    
+    # Pre-configured dashboards
+    dashboards:
+      default:
+        # Prometheus Stats
+        prometheus-stats:
+          gnetId: 2
+          revision: 2
+          datasource: Prometheus
+      kubernetes:
+        # Kubernetes Cluster Dashboard
+        kubernetes-cluster:
+          gnetId: 7249
+          revision: 1
+          datasource: Prometheus
+        # Node Exporter Full Dashboard
+        node-exporter:
+          gnetId: 1860
+          revision: 37
+          datasource: Prometheus
+        # Kubernetes Pod Monitoring
+        kubernetes-pods:
+          gnetId: 6417
+          revision: 1
+          datasource: Prometheus
+        # Kubernetes Deployments
+        kubernetes-deployments:
+          gnetId: 8588
+          revision: 1
+          datasource: Prometheus
+        # ArgoCD Dashboard (if enabled)
+        argocd:
+          gnetId: 14584
+          revision: 1
+          datasource: Prometheus
+        # Longhorn Dashboard (if enabled)
+        longhorn:
+          gnetId: 13032
+          revision: 6
+          datasource: Prometheus
+  
+  # AlertManager configuration
+  alertmanager:
+    enabled: true
+    alertmanagerSpec:
+      replicas: "{{ alertmanager_replicas | default(1) }}"
+      
+      # Resource configuration
+      resources: "{{ alertmanager_resources }}"
+      
+      # Storage configuration
+      storage:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: "{{ storage_class | default('longhorn') }}"
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: "{{ alertmanager_storage_size | default('5Gi') }}"
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      
+      # Alertmanager configuration
+      configSecret: ""  # Use default config from chart
+  
+  # Node Exporter configuration
+  nodeExporter:
+    enabled: true
+    
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  
+  # Kube State Metrics configuration
+  kubeStateMetrics:
+    enabled: true
+    
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  
+  # Prometheus Operator configuration
+  prometheusOperator:
+    enabled: true
+    
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    
+    # Admission webhooks
+    admissionWebhooks:
+      enabled: true
+      patch:
+        enabled: true
+  
+  # Kubernetes component scraping
+  kubeApiServer:
+    enabled: true
+  
+  kubelet:
+    enabled: true
+    
+  kubeControllerManager:
+    enabled: true
+    endpoints:
+      - 10.0.0.10  # VIP endpoint from Task 3
+    service:
+      enabled: true
+      port: 10257
+      targetPort: 10257
+  
+  kubeScheduler:
+    enabled: true
+    endpoints:
+      - 10.0.0.10  # VIP endpoint from Task 3
+    service:
+      enabled: true
+      port: 10259
+      targetPort: 10259
+  
+  kubeProxy:
+    enabled: false  # K3s doesn't use kube-proxy
+  
+  kubeEtcd:
+    enabled: false  # K3s etcd doesn't expose metrics by default
+  
+  # CoreDNS monitoring
+  coreDns:
+    enabled: true
+
+# Alert notification configuration (extend externally)
+alert_notification_channels: []
+# Example:
+# alert_notification_channels:
+#   - name: slack-alerts
+#     type: slack
+#     settings:
+#       url: "{{ slack_webhook_url }}"
+#       channel: "#alerts"
+#       title: "K3s Cluster Alert" 

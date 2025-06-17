@@ -1,0 +1,405 @@
+---
+# System preparation tasks
+- name: Update package cache (Ubuntu/Debian)
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - wget
+      - software-properties-common
+    state: present
+
+# k3s installation preparation
+- name: Create k3s directory
+  file:
+    path: /etc/rancher/k3s
+    state: directory
+    mode: '0755'
+
+- name: Check if k3s is already installed
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_installed
+
+# Debug information
+- name: Debug node information
+  debug:
+    msg:
+      - "Current node: {{ inventory_hostname }}"
+      - "ansible_host: {{ ansible_host | default('not_set') }}"
+      - "k3s_servers group: {{ groups['k3s_servers'] | default(['not_defined']) }}"
+      - "k3s_workers group: {{ groups['k3s_workers'] | default(['not_defined']) }}"
+      - "First server: {{ groups['k3s_servers'][0] | default('not_defined') }}"
+      - "k3s already installed: {{ k3s_installed.stat.exists }}"
+      - "Is first server: {{ inventory_hostname == groups['k3s_servers'][0] }}"
+      - "Is additional server: {{ inventory_hostname in groups['k3s_servers'] and inventory_hostname != groups['k3s_servers'][0] }}"
+      - "Is worker: {{ inventory_hostname in groups['k3s_workers'] | default(false) }}"
+
+# Set external IP for localhost (dream-machine)
+- name: Set external IP for localhost
+  set_fact:
+    external_ip: "192.168.1.52"
+  when: inventory_hostname == "localhost"
+
+- name: Set external IP for all remote hosts
+  set_fact:
+    external_ip: "{{ ansible_host }}"
+  when: inventory_hostname != "localhost"
+
+# Debug external IP
+- name: Debug external IP setting
+  debug:
+    msg: "External IP for {{ inventory_hostname }}: {{ external_ip | default('not_set') }}"
+
+# k3s installation tasks
+- name: Install k3s on first server node (cluster init)
+  shell: |
+    curl -sfL https://get.k3s.io | K3S_TOKEN={{ k3s_token }} sh -s - server \
+      --cluster-init \
+      --disable=traefik \
+      --write-kubeconfig-mode=644 \
+      --node-ip={{ external_ip }}
+  when: 
+    - inventory_hostname == groups['k3s_servers'][0]
+    - not k3s_installed.stat.exists
+  register: first_server_install
+
+- name: Debug first server installation
+  debug:
+    msg: "First server installation result: {{ first_server_install.rc | default('skipped') }}"
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+# Wait for first server to be ready - runs on all nodes that need it
+- name: Wait for first server to be ready (for additional servers)
+  wait_for:
+    host: "{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}"
+    port: 6443
+    timeout: 300
+  when: 
+    - inventory_hostname in groups['k3s_servers']
+    - inventory_hostname != groups['k3s_servers'][0]
+    - not k3s_installed.stat.exists
+
+- name: Wait for first server to be ready (for workers)
+  wait_for:
+    host: "{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}"
+    port: 6443
+    timeout: 300
+  when: 
+    - inventory_hostname in groups['k3s_workers'] | default([])
+    - not k3s_installed.stat.exists
+
+- name: Install k3s on additional server nodes
+  shell: |
+    curl -sfL https://get.k3s.io | K3S_TOKEN={{ k3s_token }} sh -s - server \
+      --server https://{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}:6443 \
+      --disable=traefik \
+      --write-kubeconfig-mode=644 \
+      --node-ip={{ external_ip }}
+  when: 
+    - inventory_hostname in groups['k3s_servers']
+    - inventory_hostname != groups['k3s_servers'][0]
+    - not k3s_installed.stat.exists
+  register: additional_server_install
+
+- name: Debug additional server installation
+  debug:
+    msg: "Additional server installation result: {{ additional_server_install.rc | default('skipped') }}"
+  when: 
+    - inventory_hostname in groups['k3s_servers']
+    - inventory_hostname != groups['k3s_servers'][0]
+
+- name: Install k3s on worker nodes (agents)
+  shell: |
+    curl -sfL https://get.k3s.io | K3S_TOKEN={{ k3s_token }} sh -s - agent \
+      --server https://10.0.0.10:6443 \
+      --node-ip={{ external_ip }}
+  when: 
+    - inventory_hostname in groups['k3s_workers'] | default([])
+    - not k3s_installed.stat.exists
+  register: worker_install
+
+- name: Debug worker installation
+  debug:
+    msg: "Worker installation result: {{ worker_install.rc | default('skipped') }}"
+  when: inventory_hostname in groups['k3s_workers'] | default([])
+
+# Service management
+- name: Enable and start k3s service on server nodes
+  systemd:
+    name: k3s
+    enabled: yes
+    state: started
+  when: inventory_hostname in groups['k3s_servers']
+
+- name: Enable and start k3s-agent service on worker nodes
+  systemd:
+    name: k3s-agent
+    enabled: yes
+    state: started
+  when: inventory_hostname in groups['k3s_workers'] | default([])
+
+- name: Create .kube directory for ansible user
+  file:
+    path: /home/{{ ansible_user }}/.kube
+    state: directory
+    mode: '0700'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  when: 
+    - inventory_hostname in groups['k3s_servers']
+    - ansible_user != 'root'
+
+- name: Set up kubeconfig symlink for ansible user
+  file:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /home/{{ ansible_user }}/.kube/config
+    state: link
+    force: yes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  when: 
+    - inventory_hostname in groups['k3s_servers']
+    - ansible_user != 'root'
+
+# Post-installation tasks
+- name: Wait for all nodes to be ready
+  shell: k3s kubectl get nodes --no-headers | grep -c Ready
+  register: ready_nodes
+  until: ready_nodes.stdout|int == (groups['k3s_servers']|length + groups['k3s_workers']|default([])|length)
+  retries: 30
+  delay: 10
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Display cluster status
+  shell: k3s kubectl get nodes -o wide
+  register: cluster_status
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Show cluster nodes
+  debug:
+    msg: "{{ cluster_status.stdout_lines }}"
+  when: 
+    - inventory_hostname == groups['k3s_servers'][0]
+    - cluster_status is defined
+
+# Local kubectl setup - only for the local user, not root
+- name: Get local user home directory
+  shell: echo $HOME
+  register: local_user_home
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Create local kubeconfig directory for the local user
+  file:
+    path: "{{ local_user_home.stdout }}/.kube"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Copy kubeconfig to local machine
+  fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ local_user_home.stdout }}/.kube/k3s-config"
+    flat: yes
+  when: inventory_hostname == groups['k3s_servers'][0]
+  become: false
+
+- name: Update kubeconfig server URL
+  replace:
+    path: "{{ local_user_home.stdout }}/.kube/k3s-config"
+    regexp: 'https://127\.0\.0\.1:6443'
+    replace: "https://{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}:6443"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Display cluster information
+  debug:
+    msg:
+      - "k3s HA cluster with embedded etcd has been successfully deployed!"
+      - "Server nodes (control plane + etcd): {{ groups['k3s_servers'] | join(', ') }}"
+      - "Worker nodes (agents): {{ groups['k3s_workers'] | default([]) | join(', ') }}"
+      - "Cluster token: {{ k3s_token }}"
+      - "First server external IP: {{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}"
+      - "To use kubectl locally:"
+      - "  export KUBECONFIG={{ local_user_home.stdout }}/.kube/k3s-config"
+      - "  kubectl get nodes -o wide"
+  run_once: true
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+# HA VIP Configuration Updates (Task 4)
+# Update kubeconfig files to use HAProxy VIP for high availability
+
+- name: Backup original kubeconfig on server nodes
+  copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /etc/rancher/k3s/k3s.yaml.backup-{{ ansible_date_time.epoch }}
+    remote_src: yes
+    mode: '0644'
+  when: inventory_hostname in groups['k3s_servers']
+  become: true
+
+- name: Update kubeconfig server URL to use HA VIP on server nodes
+  replace:
+    path: /etc/rancher/k3s/k3s.yaml
+    regexp: 'https://127\.0\.0\.1:6443'
+    replace: 'https://10.0.0.10:6443'
+    backup: false
+  when: inventory_hostname in groups['k3s_servers']
+  become: true
+  register: kubeconfig_updated_servers
+
+- name: Update local kubeconfig to use HA VIP
+  replace:
+    path: "{{ local_user_home.stdout }}/.kube/k3s-config"
+    regexp: 'https://.*:6443'
+    replace: 'https://10.0.0.10:6443'
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+  register: kubeconfig_updated_local
+
+- name: Create HA kubeconfig validation script
+  copy:
+    content: |
+      #!/bin/bash
+      echo "🔍 Kubeconfig HA VIP Validation Script"
+      echo "====================================="
+      
+      # Check kubeconfig files for VIP usage
+      echo "📋 Kubeconfig Files Status:"
+      
+      # Check system kubeconfig
+      if [ -f /etc/rancher/k3s/k3s.yaml ]; then
+          SERVER_URL=$(grep "server:" /etc/rancher/k3s/k3s.yaml | awk '{print $2}')
+          echo "  System kubeconfig (/etc/rancher/k3s/k3s.yaml): $SERVER_URL"
+          if echo "$SERVER_URL" | grep -q "10.0.0.10"; then
+              echo "    ✅ Using HA VIP"
+          else
+              echo "    ❌ Not using HA VIP"
+          fi
+      else
+          echo "  ❌ System kubeconfig not found"
+      fi
+      
+      # Check user kubeconfig
+      if [ -f ~/.kube/config ]; then
+          USER_SERVER_URL=$(grep "server:" ~/.kube/config | awk '{print $2}')
+          echo "  User kubeconfig (~/.kube/config): $USER_SERVER_URL"
+          if echo "$USER_SERVER_URL" | grep -q "10.0.0.10"; then
+              echo "    ✅ Using HA VIP"
+          else
+              echo "    ❌ Not using HA VIP"
+          fi
+      else
+          echo "  ⚠️  User kubeconfig not found"
+      fi
+      echo
+      
+      # Test connectivity using VIP
+      echo "🧪 API Connectivity Test via VIP:"
+      if command -v kubectl &> /dev/null; then
+          # Test with system kubeconfig
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          if kubectl get nodes --request-timeout=10s >/dev/null 2>&1; then
+              echo "  ✅ kubectl get nodes via system kubeconfig: SUCCESS"
+          else
+              echo "  ❌ kubectl get nodes via system kubeconfig: FAILED"
+          fi
+          
+          # Test with user kubeconfig if exists
+          if [ -f ~/.kube/config ]; then
+              export KUBECONFIG=~/.kube/config
+              if kubectl get nodes --request-timeout=10s >/dev/null 2>&1; then
+                  echo "  ✅ kubectl get nodes via user kubeconfig: SUCCESS"
+              else
+                  echo "  ❌ kubectl get nodes via user kubeconfig: FAILED"
+              fi
+          fi
+      else
+          echo "  ⚠️  kubectl not available for testing"
+      fi
+      echo
+      
+      # Show cluster info
+      echo "📊 Cluster Information:"
+      export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+      if command -v kubectl &> /dev/null && kubectl get nodes >/dev/null 2>&1; then
+          echo "  Nodes:"
+          kubectl get nodes -o wide --no-headers | while read line; do
+              echo "    $line"
+          done
+          echo
+          echo "  API Server Endpoints:"
+          echo "    HA VIP: https://10.0.0.10:6443"
+          echo "    Current context: $(kubectl config current-context 2>/dev/null || echo 'default')"
+      else
+          echo "  ❌ Unable to retrieve cluster information"
+      fi
+      echo
+      
+      # Troubleshooting tips
+      echo "🔧 Troubleshooting:"
+      echo "  1. Verify VIP is active: ip addr | grep 10.0.0.10"
+      echo "  2. Test VIP connectivity: curl -k https://10.0.0.10:6443/healthz"
+      echo "  3. Check HAProxy status: systemctl status haproxy"
+      echo "  4. Check keepalived status: systemctl status keepalived"
+      echo "  5. Validate HA setup: /usr/local/bin/validate-ha-control-plane"
+    dest: /usr/local/bin/validate-kubeconfig-ha
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+
+- name: Test kubectl connectivity via HA VIP
+  shell: kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get nodes --request-timeout=10s
+  register: kubectl_test_vip
+  ignore_errors: true
+  when: inventory_hostname in groups['k3s_servers']
+  become: true
+
+- name: Display kubeconfig HA update status
+  debug:
+    msg: |
+      ✅ Kubeconfig HA VIP Configuration Completed:
+      - Server kubeconfig updated: {{ 'YES' if kubeconfig_updated_servers.changed else 'NO (already configured)' }}
+      - Local kubeconfig updated: {{ 'YES' if kubeconfig_updated_local.changed else 'NO (already configured)' }}
+      - kubectl test via VIP: {{ 'SUCCESS' if kubectl_test_vip.rc == 0 else 'FAILED - check HA setup' }}
+      
+      🌐 HA Access Configuration:
+      - All kubeconfig files now point to: https://10.0.0.10:6443
+      - Backup created: /etc/rancher/k3s/k3s.yaml.backup-{{ ansible_date_time.epoch }}
+      - Local config: {{ local_user_home.stdout }}/.kube/k3s-config
+      
+      🔧 High Availability Benefits:
+      - No single point of failure for API access
+      - Automatic failover between master nodes
+      - Client connections route through HAProxy VIP
+      - Transparent failover within 2 seconds
+      
+      🛠️ Validation & Testing:
+      - Run validation: /usr/local/bin/validate-kubeconfig-ha
+      - Test failover: kubectl get nodes (while stopping keepalived on active master)
+      - Monitor VIP: watch kubectl get nodes
+      
+      📋 Next Steps:
+      1. Run validation script on all nodes
+      2. Test failover scenarios (Task 5)
+      3. Update any external clients to use VIP
+      4. Monitor API access patterns
+      
+      ⚠️ Important: All cluster API access now routes through HA VIP 10.0.0.10!
+  run_once: true
+  when: inventory_hostname == groups['k3s_servers'][0]

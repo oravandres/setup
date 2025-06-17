@@ -1,0 +1,135 @@
+# Ansible Lint Configuration
+# Configuration for maintaining code quality in the K3s cluster automation
+
+# Exclude patterns
+exclude_paths:
+  - .git/
+  - .taskmaster/
+  - .cursor/
+  - scripts/
+  - inventory/host_vars/
+  - "*.md"
+  - "*.txt"
+
+# Rule configuration
+rules:
+  # Enable most rules by default
+  command-instead-of-module: enable
+  command-instead-of-shell: enable
+  deprecated-bare-vars: enable
+  deprecated-local-action: enable
+  deprecated-module: enable
+  empty-string-compare: enable
+  fqcn-builtins: enable
+  galaxy: enable
+  ignore-errors: enable
+  inline-env-var: enable
+  internal-error: enable
+  jinja: enable
+  key-order: enable
+  literal-compare: enable
+  load-failure: enable
+  loop-var-prefix: enable
+  meta-incorrect: enable
+  meta-no-info: enable
+  meta-no-tags: enable
+  meta-runtime: enable
+  meta-video-links: enable
+  name: enable
+  no-changed-when: enable
+  no-free-form: enable
+  no-handler: enable
+  no-jinja-when: enable
+  no-log-password: enable
+  no-relative-paths: enable
+  no-same-owner: enable
+  no-tabs: enable
+  only-builtins: enable
+  package-latest: enable
+  parser-error: enable
+  partial-become: enable
+  playbook-extension: enable
+  risky-file-permissions: enable
+  risky-octal: enable
+  risky-shell-pipe: enable
+  role-name: enable
+  run-once: enable
+  sanity: enable
+  schema: enable
+  syntax-check: enable
+  truthy: enable
+  unnamed-task: enable
+  var-naming: enable
+  warning: enable
+  yaml: enable
+
+# Skip specific rules for this project
+skip_list:
+  - yaml[line-length]  # Allow longer lines for complex configurations
+  - name[casing]       # Allow emoji and descriptive names
+  - command-instead-of-shell  # Shell commands needed for kubectl operations
+  - risky-shell-pipe   # Kubectl commands often use pipes
+  - no-changed-when    # Some verification tasks don't change state
+
+# Use specific Ansible version
+supported_ansible_versions:
+  - ">=2.14"
+
+# Offline mode (don't check galaxy)
+offline: false
+
+# Progressive mode (show all issues)
+progressive: false
+
+# Profile to use
+profile: production
+
+# Enable parseable output
+parseable: true
+
+# Colored output
+colored: true
+
+# Verbosity level
+verbosity: 1
+
+# Warning handling
+warnings_filter:
+  - experimental  # Allow experimental features
+
+# Custom rules directory
+# rulesdir: []
+
+# Mock modules for linting
+mock_modules:
+  - kubernetes.core.k8s
+  - kubernetes.core.k8s_info
+  - kubernetes.core.helm
+  - kubernetes.core.helm_info
+
+# Mock roles for linting
+mock_roles:
+  - metallb
+  - ingress-nginx
+  - ha-proxy
+  - longhorn
+  - cert-manager
+  - external-dns
+  - argocd
+  - etcd-backup
+  - monitoring
+  - logging
+  - chaos-testing
+  - k3s
+  - gpu
+
+# Exclude specific files
+exclude_files:
+  - playbooks/setup_*.yaml  # Legacy files
+  - playbooks/deploy_*.yaml  # Legacy files
+
+# Tags to always include
+tags:
+  - idiom
+  - metadata
+  - formatting 

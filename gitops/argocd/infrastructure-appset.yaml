@@ -1,0 +1,65 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-core
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: infrastructure-core
+    app.kubernetes.io/part-of: gitops
+spec:
+  generators:
+  - list:
+      elements:
+      - cluster: k3s-dev
+        url: https://kubernetes.default.svc
+        environment: dev
+        values_file: gitops/environments/dev/values.yaml
+      - cluster: k3s-staging  
+        url: https://k3s-staging.cluster.local
+        environment: staging
+        values_file: gitops/environments/staging/values.yaml
+      - cluster: k3s-production
+        url: https://k3s-production.cluster.local  
+        environment: production
+        values_file: gitops/environments/production/values.yaml
+        
+  template:
+    metadata:
+      name: '{{cluster}}-infrastructure-core'
+      labels:
+        environment: '{{environment}}'
+        cluster: '{{cluster}}'
+        component: infrastructure
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/your-org/k3s-homelab-setup
+        targetRevision: HEAD
+        path: gitops/infrastructure
+        helm:
+          valueFiles:
+          - '../{{values_file}}'
+          parameters:
+          - name: global.environment
+            value: '{{environment}}'
+          - name: global.cluster
+            value: '{{cluster}}'
+      destination:
+        server: '{{url}}'
+        namespace: kube-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 10 

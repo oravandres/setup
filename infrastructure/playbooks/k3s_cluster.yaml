@@ -1,0 +1,230 @@
+---
+# K3s Cluster Installation Playbook
+# Deploys a highly available K3s cluster with embedded etcd
+
+- name: "🔧 K3s Cluster Installation"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # Generate secure cluster token
+    k3s_token_file: "/tmp/k3s-token-{{ ansible_date_time.epoch }}"
+    cleanup_existing: true
+  
+  tasks:
+    - name: "Generate secure K3s cluster token"
+      shell: openssl rand -hex 32
+      register: generated_token
+      run_once: true
+
+    - name: "Set K3s token as fact"
+      set_fact:
+        k3s_token: "{{ generated_token.stdout }}"
+      run_once: true
+
+    - name: "Store token temporarily for cluster nodes"
+      copy:
+        content: "{{ k3s_token }}"
+        dest: "{{ k3s_token_file }}"
+        mode: '0600'
+      delegate_to: localhost
+
+    - name: "Display cluster deployment information"
+      debug:
+        msg:
+          - "🚀 Starting K3s HA Cluster Deployment"
+          - "Cluster Token: {{ k3s_token[:8] }}... (truncated for security)"
+          - "Control Plane Nodes: {{ groups['control_plane'] | length }}"
+          - "Worker Nodes: {{ groups['workers'] | length }}"
+          - "Total Nodes: {{ groups['k3s_cluster'] | length }}"
+          - "VIP Endpoint: {{ control_plane_endpoint }}"
+          - "Cleanup Existing: {{ cleanup_existing }}"
+
+# Test connectivity to all cluster nodes
+- name: "🔍 Pre-flight Connectivity Check"
+  hosts: k3s_cluster
+  gather_facts: false
+  tasks:
+    - name: "Test connection to cluster nodes"
+      ping:
+      register: connectivity_test
+
+    - name: "Gather basic system information"
+      setup:
+        gather_subset: 
+          - "!all"
+          - "!any"
+          - "min"
+          - "network"
+          - "hardware"
+      register: node_info
+
+    - name: "Display node information"
+      debug:
+        msg:
+          - "Node: {{ inventory_hostname }}"
+          - "IP: {{ ansible_default_ipv4.address }}"
+          - "Architecture: {{ ansible_architecture }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Memory: {{ ansible_memtotal_mb }}MB"
+          - "CPU Cores: {{ ansible_processor_vcpus }}"
+
+# Cleanup existing K3s installations if requested
+- name: "🧹 Cleanup Existing K3s Installations"
+  hosts: k3s_cluster
+  become: true
+  tasks:
+    - name: "Stop K3s services"
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - k3s
+        - k3s-agent
+      ignore_errors: true
+      when: cleanup_existing | default(true)
+
+    - name: "Run K3s server uninstall script"
+      shell: /usr/local/bin/k3s-uninstall.sh
+      ignore_errors: true
+      when: 
+        - cleanup_existing | default(true)
+        - inventory_hostname in groups['control_plane']
+
+    - name: "Run K3s agent uninstall script"
+      shell: /usr/local/bin/k3s-agent-uninstall.sh
+      ignore_errors: true
+      when: 
+        - cleanup_existing | default(true)
+        - inventory_hostname in groups['workers']
+
+    - name: "Clean up residual files and directories"
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher
+        - /var/lib/rancher
+        - /var/log/k3s.log
+        - /usr/local/bin/k3s
+        - /usr/local/bin/kubectl
+        - /usr/local/bin/crictl
+        - /usr/local/bin/ctr
+      ignore_errors: true
+      when: cleanup_existing | default(true)
+
+    - name: "Remove K3s systemd service files"
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/k3s.service
+        - /etc/systemd/system/k3s-agent.service
+      ignore_errors: true
+      when: cleanup_existing | default(true)
+
+    - name: "Reload systemd daemon"
+      systemd:
+        daemon_reload: true
+      when: cleanup_existing | default(true)
+
+# Install and configure K3s cluster
+- name: "⚙️ Install K3s Cluster"
+  hosts: k3s_cluster
+  become: true
+  serial: 1  # Install nodes one at a time for HA stability
+  tasks:
+    - name: "Read K3s token from file"
+      slurp:
+        src: "{{ hostvars['localhost']['k3s_token_file'] }}"
+      register: token_content
+      delegate_to: localhost
+      run_once: true
+
+    - name: "Set K3s token fact for all nodes"
+      set_fact:
+        k3s_token: "{{ token_content.content | b64decode | trim }}"
+
+    - name: "Display installation progress"
+      debug:
+        msg:
+          - "Installing K3s on: {{ inventory_hostname }}"
+          - "Node Type: {{ 'Server' if inventory_hostname in groups['control_plane'] else 'Agent' }}"
+          - "Architecture: {{ node_architecture }}"
+          - "Role: {{ node_type }}"
+
+    # Install K3s using the role
+    - name: "Install K3s via role"
+      include_role:
+        name: k3s
+      vars:
+        k3s_token: "{{ k3s_token }}"
+
+# Post-installation verification and configuration
+- name: "✅ Post-Installation Verification"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: "Wait for cluster to stabilize"
+      pause:
+        seconds: 30
+        prompt: "Waiting for K3s cluster to stabilize..."
+
+    - name: "Verify cluster is accessible"
+      shell: kubectl get nodes --no-headers
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: cluster_nodes
+      retries: 10
+      delay: 10
+      until: cluster_nodes.rc == 0
+
+    - name: "Display cluster status"
+      shell: |
+        echo "=== Cluster Nodes ==="
+        kubectl get nodes -o wide
+        echo ""
+        echo "=== System Pods ==="
+        kubectl get pods -n kube-system
+        echo ""
+        echo "=== Cluster Info ==="
+        kubectl cluster-info
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: cluster_status
+
+    - name: "Show cluster status"
+      debug:
+        msg: "{{ cluster_status.stdout_lines }}"
+
+    - name: "Verify all nodes are ready"
+      shell: kubectl get nodes --no-headers | grep -v Ready | wc -l
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: not_ready_nodes
+      failed_when: not_ready_nodes.stdout | int > 0
+
+    - name: "Clean up temporary token file"
+      file:
+        path: "{{ k3s_token_file }}"
+        state: absent
+
+    - name: "🎉 K3s Cluster Installation Summary"
+      debug:
+        msg:
+          - "✅ K3s Cluster Successfully Installed!"
+          - "Control Plane Nodes: {{ groups['control_plane'] | length }}"
+          - "Worker Nodes: {{ groups['workers'] | length }}"
+          - "Total Nodes: {{ groups['k3s_cluster'] | length }}"
+          - "Cluster Endpoint: {{ control_plane_endpoint }}"
+          - "Kubeconfig: {{ kubeconfig_path }}"
+          - ""
+          - "🔧 Next Steps:"
+          - "  1. Deploy core networking components (MetalLB, Ingress-NGINX)"
+          - "  2. Install storage solution (Longhorn)"
+          - "  3. Set up GitOps platform (ArgoCD)"
+          - "  4. Configure observability stack"
+          - ""
+          - "🚀 Cluster is ready for application deployments!" 

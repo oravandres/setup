@@ -1,0 +1,112 @@
+# Development Environment Configuration
+---
+global:
+  environment: dev
+  domain: "dev.cluster.local"
+  cluster_name: "k3s-dev"
+  
+# ArgoCD Configuration
+argocd:
+  enabled: true
+  domain: "argocd.dev.cluster.local"
+  admin_password: "admin123!"
+  cert_issuer: "letsencrypt-staging"
+  oidc_enabled: false
+  resources:
+    server:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    controller:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# cert-manager Configuration
+cert_manager:
+  enabled: true
+  cert_issuer: "letsencrypt-staging"
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+  create_wildcard_cert: false
+
+# MetalLB Configuration  
+metallb:
+  enabled: true
+  ip_pool:
+    addresses:
+      - "192.168.1.100-192.168.1.110"  # Dev range - smaller pool
+  resources:
+    controller:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    speaker:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  prometheus:
+    retention: "7d"  # Shorter retention for dev
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+  grafana:
+    enabled: true
+    admin_password: "grafana123"
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  class: "nginx"
+  tls_enabled: false  # Disable TLS for dev simplicity
+
+# Storage Configuration
+storage:
+  longhorn:
+    enabled: false  # Use local storage in dev
+  backup:
+    enabled: false
+
+# Security Configuration
+security:
+  networkpolicies: false  # Disabled for dev flexibility
+  podsecuritypolicies: false
+
+# Sealed Secrets Configuration
+sealed_secrets:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  metrics:
+    enabled: true
+  log_level: "debug"  # More verbose logging for dev 

@@ -1,0 +1,79 @@
+---
+# Sealed Secrets Controller - Default Variables
+
+# Controller configuration
+sealed_secrets_namespace: "kube-system"
+sealed_secrets_controller_name: "sealed-secrets-controller"
+sealed_secrets_version: "v0.24.4"  # Latest stable version
+
+# Helm chart configuration  
+sealed_secrets_chart_version: "2.15.2"
+sealed_secrets_repository: "https://bitnami-labs.github.io/sealed-secrets"
+
+# Controller image configuration
+sealed_secrets_image:
+  repository: "bitnami/sealed-secrets-controller"
+  tag: "{{ sealed_secrets_version }}"
+  pullPolicy: "IfNotPresent"
+
+# Resource configuration
+sealed_secrets_resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Security context
+sealed_secrets_security_context:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 65534
+
+# Service configuration
+sealed_secrets_service:
+  port: 8080
+  type: ClusterIP
+
+# RBAC configuration
+sealed_secrets_rbac:
+  create: true
+  pspEnabled: false
+
+# Service account
+sealed_secrets_service_account:
+  create: true
+  name: "sealed-secrets-controller"
+
+# Pod annotations
+sealed_secrets_pod_annotations: {}
+
+# Node selector and tolerations
+sealed_secrets_node_selector: {}
+sealed_secrets_tolerations: []
+sealed_secrets_affinity: {}
+
+# Monitoring configuration
+sealed_secrets_metrics:
+  enabled: true
+  port: 8081
+  service_monitor:
+    enabled: true
+    namespace: "{{ sealed_secrets_namespace }}"
+    labels:
+      release: kube-prometheus
+
+# Secret scope configuration
+sealed_secrets_secret_name: "sealed-secrets-key"
+sealed_secrets_key_renew_period: "30d"
+
+# Additional controller args
+sealed_secrets_additional_args: []
+
+# Log level (info, debug, error)
+sealed_secrets_log_level: "info"
+
+# GitOps integration
+gitops_secrets_directory: "gitops/secrets"
+create_gitops_structure: true 

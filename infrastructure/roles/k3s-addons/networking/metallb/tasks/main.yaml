@@ -1,0 +1,275 @@
+---
+- name: Create namespace for MetalLB
+  kubernetes.core.k8s:
+    name: metallb-system
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Disable K3s default ServiceLB
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: k3s-config
+        namespace: kube-system
+      data:
+        disable: "servicelb"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  ignore_errors: true
+
+- name: Add MetalLB Helm repository
+  kubernetes.core.helm_repository:
+    name: metallb
+    repo_url: https://metallb.github.io/metallb
+
+- name: Create MetalLB values configuration
+  copy:
+    content: |
+      # MetalLB configuration optimized for heterogeneous cluster
+      # Provides load balancing for services in bare-metal environment
+      
+      controller:
+        # Resource limits for controller
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        
+        # Node affinity - prefer control plane nodes
+        nodeSelector:
+          node-role.kubernetes.io/control-plane: "true"
+        
+        # Multi-arch tolerations
+        tolerations:
+          - key: "arm"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          - key: "node.kubernetes.io/arch"
+            operator: "Equal"
+            value: "arm64"
+            effect: "NoSchedule"
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
+            effect: "NoSchedule"
+      
+      speaker:
+        # Resource limits for speaker
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        
+        # Multi-arch tolerations
+        tolerations:
+          - key: "arm"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          - key: "node.kubernetes.io/arch"
+            operator: "Equal"
+            value: "arm64"
+            effect: "NoSchedule"
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
+            effect: "NoSchedule"
+        
+        # Enable memberlist for speaker coordination
+        memberlist:
+          enabled: true
+          
+      # Prometheus monitoring integration
+      prometheus:
+        serviceAccount: prometheus-kube-prometheus-prometheus
+        serviceMonitor:
+          enabled: true
+          namespace: monitoring
+          
+      # FRR mode for advanced routing (optional)
+      frrk8s:
+        enabled: false
+    dest: /tmp/metallb-values.yaml
+    mode: '0644'
+
+- name: Deploy MetalLB v0.14 with custom configuration
+  kubernetes.core.helm:
+    name: metallb
+    chart_ref: metallb/metallb
+    chart_version: "^0.14.0"  # Ensure we use MetalLB v0.14.x
+    release_namespace: metallb-system
+    create_namespace: true
+    values_files:
+      - /tmp/metallb-values.yaml
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    wait: true
+    timeout: 5m
+
+- name: Wait for MetalLB controller to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: metallb-system
+    label_selectors:
+      - app.kubernetes.io/name=metallb
+      - app.kubernetes.io/component=controller
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: metallb_controller
+  until: metallb_controller.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+  retries: 15
+  delay: 20
+
+- name: Wait for MetalLB speakers to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: metallb-system
+    label_selectors:
+      - app.kubernetes.io/name=metallb
+      - app.kubernetes.io/component=speaker
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: metallb_speakers
+  until: metallb_speakers.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 3
+  retries: 15
+  delay: 20
+
+- name: Create IP address pool for load balancer services
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: main-pool
+        namespace: metallb-system
+      spec:
+        addresses:
+          # MetalLB LoadBalancer IP range as specified in project requirements
+          # This range provides 21 IP addresses for services
+          - 10.0.0.30-10.0.0.50
+        autoAssign: true
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create L2 advertisement for IP pool
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: main-l2adv
+        namespace: metallb-system
+      spec:
+        ipAddressPools:
+          - main-pool
+        nodeSelectors:
+          - matchLabels:
+              kubernetes.io/arch: amd64  # Prefer PC for gateway traffic
+          - matchLabels:
+              kubernetes.io/arch: arm64  # Fallback to Pis if needed
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# Note: K3s API LoadBalancer removed - Task 4 will handle API VIP with HAProxy at 10.0.0.10
+
+- name: Create test LoadBalancer service
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: metallb-test-service
+        namespace: default
+        labels:
+          app: test-lb
+      spec:
+        type: LoadBalancer
+        ports:
+          - port: 80
+            targetPort: 8080
+            protocol: TCP
+            name: http
+        selector:
+          app: test-nginx
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create test nginx deployment
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: test-nginx
+        namespace: default
+        labels:
+          app: test-nginx
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: test-nginx
+        template:
+          metadata:
+            labels:
+              app: test-nginx
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:alpine
+              ports:
+              - containerPort: 80
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+            tolerations:
+              - key: "arm"
+                operator: "Equal"
+                value: "true"
+                effect: "NoSchedule"
+              - key: "node.kubernetes.io/arch"
+                operator: "Equal"
+                value: "arm64"
+                effect: "NoSchedule"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Display MetalLB status
+  debug:
+    msg: |
+      ✅ MetalLB Load Balancer Status:
+      - Controller running: {{ metallb_controller.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+      - Speakers running: {{ metallb_speakers.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+      - IP Pool: 10.0.0.30-10.0.0.50 (21 IPs available)
+      
+      🌐 Load Balancer Services:
+      - Test Service: Check with kubectl get svc metallb-test-service
+      
+      📖 Next Steps:
+      1. Validate deployment: /usr/local/bin/validate-metallb
+      2. Deploy Ingress Controller for HTTP/HTTPS traffic (Task 2)
+      3. Test LoadBalancer with: curl http://<TEST_LB_IP>
+      4. K3s API VIP will be handled by HAProxy in Task 4 (10.0.0.10)
+      
+      ⚠️  MetalLB v0.14 configured with Layer 2 mode for IP range 10.0.0.30-10.0.0.50
+      🛠️  Validation script installed at: /usr/local/bin/validate-metallb
+
+- name: Copy MetalLB validation script
+  copy:
+    src: validate-metallb.sh
+    dest: /usr/local/bin/validate-metallb
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Clean up temporary values file
+  file:
+    path: /tmp/metallb-values.yaml
+    state: absent 

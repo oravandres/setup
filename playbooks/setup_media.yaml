@@ -1,6 +1,0 @@
----
-- name: Set up media
-  hosts: localhost
-  become: true
-  roles:
-    - media

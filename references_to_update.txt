@@ -1,0 +1,85 @@
+./docs/operations/README.md:ansible-playbook -i inventory/production/hosts.yml playbooks/scale-cluster.yml --extra-vars "new_nodes=node4,node5"
+./docs/runbooks/backup-restore.md:ansible-playbook -i inventory/production/hosts.yml playbooks/add-node.yml
+./docs/runbooks/backup-restore.md:ansible-playbook -i inventory/production/hosts.yml playbooks/site.yml
+./.github/workflows/ci.yml:          ansible-galaxy install -r infrastructure/requirements.yml --ignore-errors || true
+./.github/workflows/ci.yml:          ansible-playbook --syntax-check playbooks/site.yml
+./.github/workflows/ci.yml:          find playbooks/ -name "*.yml" -exec ansible-playbook --syntax-check {} \;
+./.github/workflows/ci.yml:          ansible-galaxy install -r infrastructure/requirements.yml --ignore-errors || true
+./.github/workflows/ci.yml:          if [ -f molecule/default/molecule.yml ]; then
+./.github/workflows/integration-tests.yml:          - site.yml
+./.github/workflows/integration-tests.yml:          - k3s-setup.yml
+./.github/workflows/integration-tests.yml:          ansible-galaxy install -r infrastructure/requirements.yml || true
+./.github/workflows/integration-tests.yml:          cat > test-inventory/hosts.yml << EOF
+./.github/workflows/integration-tests.yml:            "site.yml")
+./.github/workflows/integration-tests.yml:              ansible-playbook --syntax-check -i ../test-inventory/hosts.yml playbooks/site.yml
+./.github/workflows/integration-tests.yml:            "k3s-setup.yml")
+./.github/workflows/integration-tests.yml:              ansible-playbook --syntax-check -i ../test-inventory/hosts.yml playbooks/k3s-setup.yml
+./.github/workflows/integration-tests.yml:            "site.yml")
+./.github/workflows/integration-tests.yml:              ansible-lint playbooks/site.yml || true
+./.github/workflows/integration-tests.yml:            "k3s-setup.yml")
+./.github/workflows/integration-tests.yml:              ansible-lint playbooks/k3s-setup.yml || true
+./.github/workflows/integration-tests.yml:            "site.yml")
+./.github/workflows/integration-tests.yml:              ansible-playbook --check -i ../test-inventory/hosts.yml playbooks/site.yml || echo "Check mode completed with warnings"
+./.github/workflows/integration-tests.yml:            "k3s-setup.yml")
+./.github/workflows/integration-tests.yml:              ansible-playbook --check -i ../test-inventory/hosts.yml playbooks/k3s-setup.yml || echo "Check mode completed with warnings"
+./scripts/analyze-unused-code.sh:            if grep -r -l --include="*.yml" --include="*.yaml" \
+./scripts/analyze-unused-code.sh:    find . \( -name "*.yml" -o -name "*.yaml" \) -not -path "./.git/*" -not -path "./.taskmaster/*" | while IFS= read -r yaml_file; do
+./scripts/analyze-unused-code.sh:    find . \( -name "*.sh" -o -name "*.yml" -o -name "*.yaml" \) -not -path "./.git/*" -not -path "./.taskmaster/*" | while IFS= read -r file; do
+./scripts/analyze-unused-code.sh:    find . -type f \( -name "*.sh" -o -name "*.yml" -o -name "*.yaml" -o -name "*.md" -o -name "*.py" -o -name "*.go" \) \
+./ansible.log:Could not find or access '/home/andres/Projects/setup/playbooks/infrastructure.yml' on the Ansible Controller.
+./ansible.log:Could not find or access '/home/andres/Projects/setup/playbooks/infrastructure.yml' on the Ansible Controller.
+./ansible.log:2025-06-18 00:39:41,325 p=83561 u=andres n=ansible INFO| playbook: playbooks/site.yml
+./ansible.log:2025-06-18 00:39:46,230 p=83620 u=andres n=ansible INFO| playbook: playbooks/site.yml
+./ansible.log:2025-06-18 00:39:46,504 p=83623 u=andres n=ansible INFO| playbook: playbooks/k3s_cluster.yml
+./ansible.log:2025-06-18 00:39:46,796 p=83626 u=andres n=ansible INFO| playbook: playbooks/networking.yml
+./ansible.log:2025-06-18 00:46:35,174 p=86181 u=andres n=ansible INFO| playbook: playbooks/site.yml
+./ansible.log:    The error appears to be in '/home/andres/Projects/setup/playbooks/site.yml': line 23, column 7, but may
+./ansible.log:2025-06-18 01:29:58,476 p=107612 u=andres n=ansible INFO| playbook: infrastructure/playbooks/site.yml
+./ansible.log:2025-06-18 01:30:10,349 p=107679 u=andres n=ansible INFO| playbook: infrastructure/playbooks/k3s_cluster.yml
+./ansible.log:2025-06-18 01:42:34,344 p=112919 u=andres n=ansible INFO| playbook: infrastructure/playbooks/networking.yml
+./ansible.log:2025-06-18 01:43:57,451 p=113897 u=andres n=ansible INFO| playbook: infrastructure/playbooks/networking.yml
+./ansible.log:2025-06-18 01:44:07,355 p=113959 u=andres n=ansible INFO| playbook: infrastructure/playbooks/k3s_cluster.yml
+./ansible.log:2025-06-18 01:56:52,344 p=115980 u=andres n=ansible ERROR| ERROR! the playbook: infrastructure/playbooks/k3s-cluster.yml could not be found
+./ansible.log:2025-06-18 01:57:03,825 p=116043 u=andres n=ansible INFO| playbook: infrastructure/playbooks/security.yml
+./ansible.log:2025-06-18 01:57:58,765 p=116170 u=andres n=ansible INFO| playbook: infrastructure/playbooks/security.yml
+./infrastructure/playbooks/site.yml:  import_playbook: k3s_cluster.yml
+./infrastructure/playbooks/site.yml:  import_playbook: networking.yml
+./infrastructure/playbooks/site.yml:  import_playbook: storage.yml
+./infrastructure/playbooks/site.yml:  import_playbook: security.yml
+./infrastructure/playbooks/site.yml:  import_playbook: observability.yml
+./infrastructure/playbooks/site.yml:  import_playbook: specialized.yml
+./infrastructure/playbooks/site.yml:  import_playbook: maintenance.yml
+./infrastructure/scripts/validate-consolidation.sh:    grep -q 'inventory = inventory/hosts.yml' ansible.cfg"
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f inventory/hosts.yml ]]"
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f inventory/group_vars/all.yml ]] && 
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f inventory/group_vars/control_plane.yml ]] && 
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f inventory/group_vars/workers.yml ]]"
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f inventory/group_vars/metallb.yml ]] && 
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f inventory/group_vars/ingress_nginx.yml ]]"
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f playbooks/site.yml ]]"
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f playbooks/k3s_cluster.yml ]] && 
+./infrastructure/scripts/validate-consolidation.sh:    [[ -f playbooks/networking.yml ]]"
+./infrastructure/scripts/validate-consolidation.sh:    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/hosts.yml\"))'"
+./infrastructure/scripts/validate-consolidation.sh:    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/all.yml\"))' &&
+./infrastructure/scripts/validate-consolidation.sh:    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/control_plane.yml\"))' &&
+./infrastructure/scripts/validate-consolidation.sh:    python3 -c 'import yaml; yaml.safe_load(open(\"inventory/group_vars/workers.yml\"))'"
+./infrastructure/scripts/validate-consolidation.sh:    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/site.yml\"))' &&
+./infrastructure/scripts/validate-consolidation.sh:    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/k3s_cluster.yml\"))' &&
+./infrastructure/scripts/validate-consolidation.sh:    python3 -c 'import yaml; yaml.safe_load(open(\"playbooks/networking.yml\"))'"
+./infrastructure/scripts/validate-consolidation.sh:        ansible-playbook --syntax-check playbooks/site.yml"
+./infrastructure/scripts/validate-consolidation.sh:        ansible-playbook --syntax-check playbooks/k3s_cluster.yml"
+./infrastructure/scripts/validate-consolidation.sh:        ansible-playbook --syntax-check playbooks/networking.yml"
+./infrastructure/scripts/validate-consolidation.sh:    ! grep -r -i 'password.*:.*[\"\\'].*[\"\\']\\|secret.*:.*[\"\\'].*[\"\\']\\|token.*:.*[\"\\'].*[\"\\']' playbooks/ --include='*.yml' --include='*.yaml' | grep -v 'vault_' | grep -v 'lookup(' | grep -v 'password_hash' | grep -v 'ssh_key' | grep -v 'default(' | grep -v 'admin123!' | grep -v 'postgres123' | grep -v 'appuser123'"
+./infrastructure/scripts/validate-consolidation.sh:        [[ -d $role_path/tasks ]] && [[ -f $role_path/tasks/main.yml ]]"
+./infrastructure/scripts/validate-consolidation.sh:    grep -q 'import_playbook.*k3s_cluster.yml' playbooks/site.yml &&
+./infrastructure/scripts/validate-consolidation.sh:    grep -q 'import_playbook.*networking.yml' playbooks/site.yml"
+./infrastructure/scripts/validate-consolidation.sh:    grep -q 'include_role.*metallb' playbooks/networking.yml &&
+./infrastructure/scripts/validate-consolidation.sh:    grep -q 'include_role.*ingress-nginx' playbooks/networking.yml"
+./infrastructure/roles/k3s-addons/observability/monitoring/templates/validate-monitoring.sh.j2:    "kubectl exec -n $NAMESPACE statefulset/alertmanager-kube-prometheus-stack-alertmanager -- amtool config check --config.file=/etc/alertmanager/config/alertmanager.yml"
+./README.md:cp infrastructure/inventory/dev/hosts.yml.example infrastructure/inventory/production/hosts.yml
+./README.md:# Edit the hosts.yml file with your server details
+./README.md:ansible-playbook -i inventory/production/hosts.yml playbooks/site.yml
+./README.md:ansible-playbook -i inventory/dev/hosts.yml playbooks/site.yml
+./README.md:ansible-playbook -i inventory/production/hosts.yml playbooks/site.yml --ask-vault-pass
+./README.md:ansible-playbook --syntax-check playbooks/site.yml
+./ansible.cfg:inventory = infrastructure/inventory/production/hosts.yml

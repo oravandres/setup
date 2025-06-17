@@ -1,0 +1,228 @@
+---
+- name: Label nodes for optimal Kafka placement
+  shell: |
+    # Label the PC node (assuming it's the x86 master)
+    PC_NODE=$(kubectl get nodes -o wide --no-headers | grep -v arm64 | grep -v aarch64 | head -1 | awk '{print $1}')
+    if [ ! -z "$PC_NODE" ]; then
+      kubectl label nodes $PC_NODE node-type=pc --overwrite
+      kubectl label nodes $PC_NODE kafka-preferred=true --overwrite
+    fi
+    
+    # Label Pi nodes
+    kubectl get nodes -o wide --no-headers | grep -E 'arm64|aarch64' | while read line; do
+      NODE=$(echo $line | awk '{print $1}')
+      kubectl label nodes $NODE node-type=raspberry-pi --overwrite
+      kubectl label nodes $NODE kafka-preferred=false --overwrite
+    done
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Create namespace for Kafka
+  kubernetes.core.k8s:
+    name: kafka
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Add Bitnami repository
+  kubernetes.core.helm_repository:
+    name: bitnami
+    repo_url: https://charts.bitnami.com/bitnami
+
+- name: Create Kafka values configuration
+  copy:
+    content: |
+      # Kafka configuration optimized for heterogeneous cluster (1 PC + 6 Pis)
+      
+      # Replica count - TRUE HA setup
+      replicaCount: 3  # 3 brokers for true HA (can lose 1, still have 2)
+      
+      persistence:
+        enabled: true
+        size: 50Gi  # Conservative for USB SSDs
+        storageClass: "local-path"
+      
+      # Kafka resources - optimized for mixed hardware
+      resources:
+        limits:
+          cpu: 1500m      # Reasonable for both PC and Pi
+          memory: 1500Mi  # Pi-friendly but still capable
+        requests:
+          cpu: 500m       # Ensures scheduling works on Pis
+          memory: 1Gi     # Fits comfortably on 8GB Pis
+      
+      # Pod disruption budget - HA configuration
+      podDisruptionBudget:
+        create: true
+        minAvailable: 2  # Always keep at least 2 brokers running
+      
+      # HA-focused affinity rules
+      affinity:
+        nodeAffinity:
+          # Prefer PC but don't require it (for HA)
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 60  # Reduced weight - prefer but don't insist
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values: ["amd64"]  # Prefer x86 PC
+        # STRONG anti-affinity - force distribution across nodes
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values: ["kafka"]
+              topologyKey: kubernetes.io/hostname
+          # Additional preference for different zones/types
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values: ["kafka"]
+                topologyKey: node-type
+      
+      # Optional: Uncomment to force Kafka only on PC
+      # nodeSelector:
+      #   kubernetes.io/arch: "amd64"
+      
+      # Tolerations for mixed architecture
+      tolerations:
+        - key: "arm"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+        - key: "node.kubernetes.io/arch"
+          operator: "Equal"
+          value: "arm64"
+          effect: "NoSchedule"
+      
+      # ZooKeeper configuration - Pi-friendly
+      zookeeper:
+        enabled: true
+        replicaCount: 3  # Perfect for your 3 masters
+        persistence:
+          enabled: true
+          size: 20Gi
+          storageClass: "local-path"
+        resources:
+          limits:
+            cpu: 500m    # Pi-appropriate
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+        
+        # ZooKeeper prefers masters (more stable)
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: node-role.kubernetes.io/master
+                      operator: Exists
+              - weight: 80
+                preference:
+                  matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: Exists
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchExpressions:
+                      - key: app.kubernetes.io/name
+                        operator: In
+                        values: ["zookeeper"]
+                  topologyKey: kubernetes.io/hostname
+      
+      # External access configuration
+      externalAccess:
+        enabled: false
+        service:
+          type: ClusterIP
+      
+      # JVM settings optimized for mixed hardware
+      heapOpts: "-Xmx1024m -Xms512m"  # Conservative heap for Pis
+      
+      # Metrics and monitoring
+      metrics:
+        kafka:
+          enabled: true
+        jmx:
+          enabled: true
+      
+      # Log retention suitable for USB SSD storage
+      logRetentionHours: 168  # 7 days instead of default
+      logSegmentBytes: 134217728  # 128MB segments
+    dest: /tmp/kafka-values.yaml
+    mode: '0644'
+
+- name: Deploy Kafka with custom configuration
+  kubernetes.core.helm:
+    name: my-kafka
+    chart_ref: bitnami/kafka
+    release_namespace: kafka
+    create_namespace: true
+    values_files:
+      - /tmp/kafka-values.yaml
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    wait: true
+    timeout: 10m
+
+- name: Verify Kafka deployment
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: kafka
+    label_selectors:
+      - app.kubernetes.io/name=kafka
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: kafka_pods
+  until: kafka_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 2
+  retries: 20
+  delay: 30
+
+- name: Verify HA distribution - Check Kafka pods are on different nodes
+  shell: |
+    kubectl get pods -n kafka -l app.kubernetes.io/name=kafka -o wide --no-headers | awk '{print $7}' | sort | uniq | wc -l
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: unique_nodes
+  failed_when: unique_nodes.stdout | int < 2
+
+- name: Display Kafka HA status
+  debug:
+    msg: |
+      ✅ Kafka HA Status:
+      - Brokers running: {{ kafka_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+      - Nodes used: {{ unique_nodes.stdout }}
+      - HA Level: {{ 'TRUE HA' if (kafka_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 3 and unique_nodes.stdout | int >= 3) else 'PARTIAL HA' if (kafka_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 2 and unique_nodes.stdout | int >= 2) else 'NO HA' }}
+
+- name: Create HA test topic with proper replication
+  shell: |
+    # Wait for all brokers to be ready
+    kubectl exec -n kafka my-kafka-0 -- kafka-topics.sh \
+      --bootstrap-server localhost:9092 \
+      --create \
+      --topic ha-test-topic \
+      --partitions 6 \
+      --replication-factor 3 \
+      --if-not-exists
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  ignore_errors: true
+
+- name: Clean up temporary values file
+  file:
+    path: /tmp/kafka-values.yaml
+    state: absent

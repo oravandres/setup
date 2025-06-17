@@ -1,0 +1,220 @@
+---
+# ArgoCD v2.11 Role - Main Tasks with Image Updater and OIDC Integration
+- name: Display ArgoCD configuration
+  debug:
+    msg:
+      - "=== ArgoCD v2.11 GitOps Platform ==="
+      - "Chart Version: {{ argocd_chart_version | default('7.4.1') }}"
+      - "ArgoCD Version: {{ argocd_version | default('v2.11.0') }}"
+      - "Domain: {{ argocd_domain | default('argocd.local') }}"
+      - "Image Updater: {{ argocd_image_updater_enabled | default(true) }}"
+      - "OIDC Enabled: {{ argocd_oidc_enabled | default(false) }}"
+  run_once: true
+
+- name: Add ArgoCD Helm repository
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+    state: present
+
+- name: Update Helm repositories
+  kubernetes.core.helm:
+    name: dummy
+    chart_ref: dummy
+    release_namespace: dummy
+    state: absent
+    update_repo_cache: yes
+
+- name: Create ArgoCD namespace
+  kubernetes.core.k8s:
+    name: argocd
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Create ArgoCD initial admin secret
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: argocd-initial-admin-secret
+        namespace: argocd
+      type: Opaque
+      stringData:
+        password: "{{ argocd_admin_password | default('admin123!') }}"
+    state: present
+  when: not argocd_oidc_enabled | default(false) | bool
+
+- name: Create OIDC client secret for ArgoCD
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: argocd-oidc-secret
+        namespace: argocd
+      type: Opaque
+      stringData:
+        clientSecret: "{{ keycloak_argocd_client_secret }}"
+    state: present
+  when: argocd_oidc_enabled | default(false) | bool and keycloak_argocd_client_secret is defined
+
+- name: Install ArgoCD via Helm
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: argo/argo-cd
+    release_namespace: argocd
+    chart_version: "{{ argocd_chart_version | default('7.4.1') }}"
+    values: "{{ argocd_values }}"
+    create_namespace: true
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 600s
+
+- name: Install ArgoCD Image Updater via Helm
+  kubernetes.core.helm:
+    name: argocd-image-updater
+    chart_ref: argo/argocd-image-updater
+    release_namespace: argocd
+    chart_version: "0.9.6"
+    values: "{{ argocd_image_updater_values }}"
+    create_namespace: false
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 300s
+  when: argocd_image_updater_enabled | default(true) | bool
+
+- name: Wait for ArgoCD server to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: argocd
+    label_selectors:
+      - app.kubernetes.io/component=server
+      - app.kubernetes.io/name=argocd-server
+  register: argocd_server_pods
+  until: >
+    argocd_server_pods.resources | length > 0 and
+    (argocd_server_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (argocd_server_pods.resources | length)
+  retries: 30
+  delay: 10
+
+- name: Wait for ArgoCD application controller to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: argocd
+    label_selectors:
+      - app.kubernetes.io/component=application-controller
+      - app.kubernetes.io/name=argocd-application-controller
+  register: argocd_controller_pods
+  until: >
+    argocd_controller_pods.resources | length > 0 and
+    (argocd_controller_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (argocd_controller_pods.resources | length)
+  retries: 30
+  delay: 10
+
+- name: Create ArgoCD Ingress with TLS
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: argocd-server-ingress
+        namespace: argocd
+        annotations:
+          kubernetes.io/ingress.class: nginx
+          cert-manager.io/cluster-issuer: "{{ cert_issuer | default('letsencrypt-staging') }}"
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+          nginx.ingress.kubernetes.io/grpc-backend: "true"
+      spec:
+        tls:
+          - hosts:
+              - "{{ argocd_domain }}"
+            secretName: argocd-server-tls
+        rules:
+          - host: "{{ argocd_domain }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: argocd-server
+                      port:
+                        number: 443
+    state: present
+  when: argocd_domain is defined and create_ingress | default(true) | bool
+
+- name: Create example GitOps application
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: sample-app
+        namespace: argocd
+      spec:
+        project: default
+        source:
+          repoURL: "{{ sample_app_repo | default('https://github.com/argoproj/argocd-example-apps.git') }}"
+          targetRevision: HEAD
+          path: guestbook
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: default
+        syncPolicy:
+          syncOptions:
+            - CreateNamespace=true
+          automated:
+            prune: true
+            selfHeal: true
+    state: present
+  when: create_sample_app | default(false) | bool
+
+- name: Deploy ArgoCD validation script
+  template:
+    src: validate-argocd.sh.j2
+    dest: /usr/local/bin/validate-argocd
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Run ArgoCD validation
+  command: /usr/local/bin/validate-argocd
+  register: argocd_validation
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Display ArgoCD validation results
+  debug:
+    var: argocd_validation.stdout_lines
+  run_once: true
+
+- name: Display ArgoCD deployment summary
+  debug:
+    msg:
+      - "=== ArgoCD GitOps Platform Deployment Complete ==="
+      - "✅ ArgoCD v2.11 deployed and validated"
+      - "✅ ArgoCD Image Updater configured"
+      - "✅ TLS ingress configured with cert-manager"
+      - "{{ '✅ Keycloak OIDC SSO configured' if argocd_oidc_enabled | default(false) | bool else '⏭️  OIDC SSO ready for configuration' }}"
+      - ""
+      - "ArgoCD UI: https://{{ argocd_domain | default('argocd.local') }}"
+      - "{{ 'Default admin password: ' + argocd_admin_password | default('admin123!') if not argocd_oidc_enabled | default(false) | bool else 'Login via Keycloak OIDC' }}"
+      - ""
+      - "Next steps:"
+      - "1. Access ArgoCD UI and change default admin password"
+      - "2. Connect Git repositories for GitOps"
+      - "3. Create Application resources for your deployments"
+      - "4. Configure Image Updater for automatic updates"
+  run_once: true 

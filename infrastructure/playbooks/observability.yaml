@@ -1,0 +1,92 @@
+---
+# Observability Playbook
+# Deploy monitoring (Prometheus, Grafana) and logging (Loki, Promtail) stack
+
+- name: "📊 Deploy Monitoring Stack (Prometheus & Grafana)"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['observability', 'monitoring']
+  
+  tasks:
+    - name: "Include monitoring role"
+      include_role:
+        name: monitoring
+      when: inventory_hostname in groups['control_plane']
+
+- name: "📋 Deploy Logging Stack (Loki & Promtail)"
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  tags: ['observability', 'logging']
+  
+  tasks:
+    - name: "Include logging role"
+      include_role:
+        name: logging
+      when: inventory_hostname in groups['k3s_cluster']
+
+- name: "✅ Verify Observability Stack Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tags: ['verify']
+  
+  tasks:
+    - name: "Wait for Prometheus to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=300s
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=alertmanager -n monitoring --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: prometheus_status
+      failed_when: prometheus_status.rc != 0
+      changed_when: false
+
+    - name: "Wait for Grafana to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=grafana -n monitoring --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: grafana_status
+      failed_when: grafana_status.rc != 0
+      changed_when: false
+
+    - name: "Wait for Loki to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=loki -n logging --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: loki_status
+      failed_when: loki_status.rc != 0
+      changed_when: false
+
+    - name: "Wait for Promtail to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=promtail -n logging --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: promtail_status
+      failed_when: promtail_status.rc != 0
+      changed_when: false
+
+    - name: "Display observability stack status"
+      debug:
+        msg:
+          - "📊 Prometheus: {{ 'Ready' if prometheus_status.rc == 0 else 'Failed' }}"
+          - "📈 Grafana: {{ 'Ready' if grafana_status.rc == 0 else 'Failed' }}"
+          - "📋 Loki: {{ 'Ready' if loki_status.rc == 0 else 'Failed' }}"
+          - "📄 Promtail: {{ 'Ready' if promtail_status.rc == 0 else 'Failed' }}"
+          - ""
+          - "🌐 Access URLs:"
+          - "  • Prometheus: https://prometheus.k3s.local"
+          - "  • Grafana: https://grafana.k3s.local"
+          - "  • AlertManager: https://alertmanager.k3s.local"
+          - ""
+          - "📊 Monitoring Features:"
+          - "  • Node and cluster metrics"
+          - "  • Application performance monitoring"
+          - "  • Custom dashboards and alerts"
+          - "  • Centralized log aggregation" 

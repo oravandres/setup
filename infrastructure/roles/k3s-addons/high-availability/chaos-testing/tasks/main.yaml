@@ -1,0 +1,359 @@
+---
+# Chaos Testing Role - Main Tasks (LitmusChaos)
+- name: Display chaos testing configuration
+  debug:
+    msg:
+      - "=== Chaos Testing Configuration ==="
+      - "Tool: LitmusChaos {{ litmus_version | default('3.9.0') }}"
+      - "Namespace: {{ chaos_namespace | default('litmus') }}"
+      - "Test Environment: {{ test_environment | default('dedicated') }}"
+      - "Experiment Schedule: {{ chaos_schedule | default('nightly') }}"
+      - "HA Control Plane Tests: {{ enable_control_plane_tests | default(true) }}"
+      - "Longhorn Storage Tests: {{ enable_storage_tests | default(true) }}"
+      - "etcd Backup Validation: {{ enable_etcd_backup_tests | default(true) }}"
+  run_once: true
+
+- name: Add LitmusChaos Helm repository
+  kubernetes.core.helm_repository:
+    name: litmuschaos
+    repo_url: https://litmuschaos.github.io/litmus-helm
+    state: present
+
+- name: Update Helm repositories
+  kubernetes.core.helm:
+    name: dummy
+    chart_ref: dummy
+    release_namespace: dummy
+    state: absent
+    update_repo_cache: yes
+
+- name: Create chaos testing namespace
+  kubernetes.core.k8s:
+    name: "{{ chaos_namespace | default('litmus') }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+    definition:
+      metadata:
+        labels:
+          name: "{{ chaos_namespace | default('litmus') }}"
+          chaos.alpha.kubernetes.io/engine: "true"
+
+- name: Install LitmusChaos via Helm
+  kubernetes.core.helm:
+    name: litmus
+    chart_ref: litmuschaos/litmus
+    release_namespace: "{{ chaos_namespace | default('litmus') }}"
+    chart_version: "{{ litmus_chart_version | default('3.9.0') }}"
+    values: "{{ litmus_values }}"
+    create_namespace: true
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 600s
+
+- name: Wait for LitmusChaos operator to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: chaos-operator-ce
+    namespace: "{{ chaos_namespace | default('litmus') }}"
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 300
+
+- name: Create chaos experiments ConfigMap
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: chaos-experiments-config
+        namespace: "{{ chaos_namespace | default('litmus') }}"
+      data:
+        experiments.yaml: |
+          {{ chaos_experiments | to_nice_yaml | indent(10) }}
+    state: present
+
+- name: Deploy control plane chaos experiments
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+  loop: "{{ control_plane_experiments }}"
+  when: enable_control_plane_tests | default(true)
+
+- name: Deploy storage chaos experiments  
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+  loop: "{{ storage_experiments }}"
+  when: enable_storage_tests | default(true)
+
+- name: Deploy etcd backup validation experiments
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+  loop: "{{ etcd_backup_experiments }}"
+  when: enable_etcd_backup_tests | default(true)
+
+- name: Create chaos experiment scheduler
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: chaos-experiment-scheduler
+        namespace: "{{ chaos_namespace | default('litmus') }}"
+        labels:
+          app: chaos-scheduler
+      spec:
+        schedule: "{{ chaos_cron_schedule | default('0 2 * * *') }}"  # Default: 2 AM daily
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                serviceAccountName: litmus-admin
+                containers:
+                - name: chaos-runner
+                  image: litmuschaos/litmus-checker:{{ litmus_version | default('3.9.0') }}
+                  command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    set -e
+                    echo "Starting scheduled chaos experiments..."
+                    
+                    # Function to run experiment and wait for completion
+                    run_experiment() {
+                      local experiment_name=$1
+                      echo "Running experiment: $experiment_name"
+                      
+                      # Apply the experiment
+                      kubectl apply -f /experiments/$experiment_name.yaml
+                      
+                      # Wait for completion (max 30 minutes)
+                      kubectl wait --for=condition=Complete \
+                        chaosengine/$experiment_name \
+                        --timeout=1800s \
+                        --namespace={{ chaos_namespace | default('litmus') }} || {
+                        echo "Experiment $experiment_name failed or timed out"
+                        kubectl describe chaosengine/$experiment_name
+                        return 1
+                      }
+                      
+                      # Get results
+                      kubectl get chaosresult -l chaosUID=$(kubectl get chaosengine/$experiment_name -o jsonpath='{.metadata.uid}') -o yaml
+                      
+                      echo "Experiment $experiment_name completed successfully"
+                    }
+                    
+                    # Run experiments based on configuration
+                    {% if enable_control_plane_tests | default(true) %}
+                    echo "=== Control Plane Resilience Tests ==="
+                    run_experiment "node-restart-master"
+                    run_experiment "etcd-kill-experiment" 
+                    run_experiment "api-server-kill"
+                    {% endif %}
+                    
+                    {% if enable_storage_tests | default(true) %}
+                    echo "=== Storage Resilience Tests ==="
+                    run_experiment "longhorn-node-restart"
+                    run_experiment "disk-fill-storage"
+                    {% endif %}
+                    
+                    {% if enable_etcd_backup_tests | default(true) %}
+                    echo "=== etcd Backup Validation Tests ==="
+                    run_experiment "etcd-backup-restore-validation"
+                    {% endif %}
+                    
+                    echo "All scheduled chaos experiments completed successfully!"
+                  volumeMounts:
+                  - name: experiments-config
+                    mountPath: /experiments
+                    readOnly: true
+                volumes:
+                - name: experiments-config
+                  configMap:
+                    name: chaos-experiments-config
+                restartPolicy: OnFailure
+                nodeSelector:
+                  kubernetes.io/arch: amd64  # Run scheduler on x86_64 node for reliability
+    state: "{{ 'present' if enable_scheduled_chaos | default(true) else 'absent' }}"
+
+- name: Create chaos testing RBAC
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: chaos-testing-role
+      rules:
+      - apiGroups: [""]
+        resources: ["pods", "nodes", "services", "endpoints", "persistentvolumeclaims"]
+        verbs: ["get", "list", "create", "delete", "update", "patch"]
+      - apiGroups: ["apps"]
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+        verbs: ["get", "list", "create", "delete", "update", "patch"]
+      - apiGroups: ["litmuschaos.io"]
+        resources: ["chaosengines", "chaosresults", "chaosexperiments"]
+        verbs: ["get", "list", "create", "delete", "update", "patch"]
+      - apiGroups: ["batch"]
+        resources: ["jobs"]
+        verbs: ["get", "list", "create", "delete"]
+    state: present
+
+- name: Create chaos testing ClusterRoleBinding
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: chaos-testing-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: chaos-testing-role
+      subjects:
+      - kind: ServiceAccount
+        name: litmus-admin
+        namespace: "{{ chaos_namespace | default('litmus') }}"
+    state: present
+
+- name: Create ServiceMonitor for LitmusChaos metrics
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: litmus-chaos-metrics
+        namespace: "{{ chaos_namespace | default('litmus') }}"
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: litmus
+        namespaceSelector:
+          matchNames:
+            - "{{ chaos_namespace | default('litmus') }}"
+        endpoints:
+          - port: http-metrics
+            interval: 30s
+            path: /metrics
+    state: "{{ 'present' if enable_chaos_monitoring | default(true) else 'absent' }}"
+
+- name: Create PrometheusRules for chaos experiment alerting
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: chaos-experiment-alerts
+        namespace: "{{ chaos_namespace | default('litmus') }}"
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        groups:
+          - name: chaos-experiments.rules
+            rules:
+              - alert: ChaosExperimentFailed
+                expr: increase(chaos_experiment_failed_total[5m]) > 0
+                for: 1m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Chaos experiment failed"
+                  description: "Chaos experiment {{ $labels.experiment_name }} failed in namespace {{ $labels.namespace }}"
+              
+              - alert: ChaosExperimentTimeout
+                expr: chaos_experiment_duration_seconds > 1800  # 30 minutes
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Chaos experiment taking too long"
+                  description: "Chaos experiment {{ $labels.experiment_name }} has been running for over 30 minutes"
+              
+              - alert: HighChaosExperimentFailureRate
+                expr: rate(chaos_experiment_failed_total[1h]) > 0.5
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "High chaos experiment failure rate"
+                  description: "More than 50% of chaos experiments are failing in the last hour"
+    state: present
+
+- name: Deploy chaos testing validation script
+  template:
+    src: validate-chaos-testing.sh.j2
+    dest: /usr/local/bin/validate-chaos-testing
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Deploy chaos experiment runner script
+  template:
+    src: run-chaos-experiments.sh.j2
+    dest: /usr/local/bin/run-chaos-experiments
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Deploy etcd backup validation script
+  template:
+    src: validate-etcd-backup.sh.j2
+    dest: /usr/local/bin/validate-etcd-backup
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Run initial chaos testing validation
+  command: /usr/local/bin/validate-chaos-testing
+  register: chaos_validation
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Display chaos testing validation results
+  debug:
+    var: chaos_validation.stdout_lines
+  run_once: true
+
+- name: Display chaos testing deployment summary
+  debug:
+    msg:
+      - "=== Chaos Testing Deployment Complete ==="
+      - "✅ LitmusChaos {{ litmus_version | default('3.9.0') }} deployed successfully"
+      - "✅ Chaos experiments configured and ready"
+      - "✅ Scheduled chaos testing enabled ({{ chaos_schedule | default('nightly') }})"
+      - "✅ Monitoring and alerting configured"
+      - "✅ RBAC permissions configured"
+      - ""
+      - "Experiment Categories:"
+      - "🏗️  Control Plane Tests: {{ 'Enabled' if enable_control_plane_tests | default(true) else 'Disabled' }}"
+      - "💾 Storage Tests: {{ 'Enabled' if enable_storage_tests | default(true) else 'Disabled' }}"
+      - "🔄 etcd Backup Tests: {{ 'Enabled' if enable_etcd_backup_tests | default(true) else 'Disabled' }}"
+      - ""
+      - "Scheduling:"
+      - "Schedule: {{ chaos_cron_schedule | default('0 2 * * *') }} ({{ chaos_schedule | default('nightly') }})"
+      - "Namespace: {{ chaos_namespace | default('litmus') }}"
+      - ""
+      - "Management Commands:"
+      - "• Run all experiments: /usr/local/bin/run-chaos-experiments"
+      - "• Validate setup: /usr/local/bin/validate-chaos-testing"
+      - "• Validate etcd backup: /usr/local/bin/validate-etcd-backup"
+      - ""
+      - "Monitoring:"
+      - "• Chaos metrics in Prometheus"
+      - "• Experiment logs in Loki"
+      - "• Grafana dashboards for chaos analysis"
+      - ""
+      - "Next Steps:"
+      - "1. Review and customize experiment configurations"
+      - "2. Test individual experiments manually before enabling schedule"
+      - "3. Configure AlertManager notifications for experiment failures"
+      - "4. Create Grafana dashboards for chaos experiment monitoring"
+      - "5. Integrate with CI/CD pipeline for automated testing"
+  run_once: true 

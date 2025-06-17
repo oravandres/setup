@@ -1,0 +1,315 @@
+---
+- name: Deploy MetalLB Load Balancer for K3s Cluster
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    kubeconfig_path: "{{ ansible_env.HOME }}/.kube/k3s-config"
+  
+  tasks:
+    - name: Verify K3s cluster is accessible
+      shell: kubectl get nodes --no-headers | wc -l
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: node_count
+      failed_when: node_count.stdout | int < 3
+
+    - name: Display cluster information
+      debug:
+        msg:
+          - "🚀 Starting MetalLB Deployment"
+          - "Target K3s cluster: {{ node_count.stdout }} nodes"
+          - "Kubeconfig: {{ kubeconfig_path }}"
+
+    - name: Create namespace for MetalLB
+      kubernetes.core.k8s:
+        name: metallb-system
+        api_version: v1
+        kind: Namespace
+        state: present
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Disable K3s default ServiceLB
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: k3s-config
+            namespace: kube-system
+          data:
+            disable: "servicelb"
+        kubeconfig: "{{ kubeconfig_path }}"
+      ignore_errors: true
+
+    - name: Add MetalLB Helm repository
+      kubernetes.core.helm_repository:
+        name: metallb
+        repo_url: https://metallb.github.io/metallb
+
+    - name: Create MetalLB values configuration
+      copy:
+        content: |
+          # MetalLB configuration optimized for heterogeneous cluster
+          # Provides load balancing for services in bare-metal environment
+          
+          controller:
+            # Resource limits for controller
+            resources:
+              limits:
+                cpu: 100m
+                memory: 100Mi
+              requests:
+                cpu: 100m
+                memory: 100Mi
+            
+            # Node affinity - prefer control plane nodes
+            nodeSelector:
+              node-role.kubernetes.io/control-plane: "true"
+            
+            # Multi-arch tolerations
+            tolerations:
+              - key: "arm"
+                operator: "Equal"
+                value: "true"
+                effect: "NoSchedule"
+              - key: "node.kubernetes.io/arch"
+                operator: "Equal"
+                value: "arm64"
+                effect: "NoSchedule"
+              - key: "node-role.kubernetes.io/control-plane"
+                operator: "Exists"
+                effect: "NoSchedule"
+          
+          speaker:
+            # Resource limits for speaker
+            resources:
+              limits:
+                cpu: 100m
+                memory: 100Mi
+              requests:
+                cpu: 100m
+                memory: 100Mi
+            
+            # Multi-arch tolerations
+            tolerations:
+              - key: "arm"
+                operator: "Equal"
+                value: "true"
+                effect: "NoSchedule"
+              - key: "node.kubernetes.io/arch"
+                operator: "Equal"
+                value: "arm64"
+                effect: "NoSchedule"
+              - key: "node-role.kubernetes.io/control-plane"
+                operator: "Exists"
+                effect: "NoSchedule"
+            
+            # Enable memberlist for speaker coordination
+            memberlist:
+              enabled: true
+              
+          # Prometheus monitoring integration
+          prometheus:
+            serviceAccount: prometheus-kube-prometheus-prometheus
+            namespace: monitoring
+            serviceMonitor:
+              enabled: false  # Disable for now, enable after monitoring stack is deployed
+              
+          # FRR mode for advanced routing (optional)
+          frrk8s:
+            enabled: false
+        dest: /tmp/metallb-values.yaml
+        mode: '0644'
+
+    - name: Deploy MetalLB with custom configuration
+      kubernetes.core.helm:
+        name: metallb
+        chart_ref: metallb/metallb
+        release_namespace: metallb-system
+        create_namespace: true
+        values_files:
+          - /tmp/metallb-values.yaml
+        kubeconfig: "{{ kubeconfig_path }}"
+        wait: true
+        timeout: 5m
+
+    - name: Wait for MetalLB controller to be ready
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: metallb-system
+        label_selectors:
+          - app.kubernetes.io/name=metallb
+          - app.kubernetes.io/component=controller
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: metallb_controller
+      until: metallb_controller.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+      retries: 15
+      delay: 20
+
+    - name: Wait for MetalLB speakers to be ready
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: metallb-system
+        label_selectors:
+          - app.kubernetes.io/name=metallb
+          - app.kubernetes.io/component=speaker
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: metallb_speakers
+      until: metallb_speakers.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 3
+      retries: 15
+      delay: 20
+
+    - name: Create IP address pool for load balancer services
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: main-pool
+            namespace: metallb-system
+          spec:
+            addresses:
+              # Reserve range for LoadBalancer services
+              # Adjust this range to match your network
+              - 192.168.1.200-192.168.1.220
+            autoAssign: true
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Create L2 advertisement for IP pool
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: main-l2adv
+            namespace: metallb-system
+          spec:
+            ipAddressPools:
+              - main-pool
+            nodeSelectors:
+              - matchLabels:
+                  kubernetes.io/arch: amd64  # Prefer PC for gateway traffic
+              - matchLabels:
+                  kubernetes.io/arch: arm64  # Fallback to Pis if needed
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Create test LoadBalancer service
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: metallb-test-service
+            namespace: default
+            labels:
+              app: test-lb
+          spec:
+            type: LoadBalancer
+            ports:
+              - port: 80
+                targetPort: 80
+                protocol: TCP
+                name: http
+            selector:
+              app: test-nginx
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Create test nginx deployment
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: test-nginx
+            namespace: default
+            labels:
+              app: test-nginx
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: test-nginx
+            template:
+              metadata:
+                labels:
+                  app: test-nginx
+              spec:
+                containers:
+                - name: nginx
+                  image: nginx:alpine
+                  ports:
+                  - containerPort: 80
+                  resources:
+                    limits:
+                      cpu: 100m
+                      memory: 128Mi
+                    requests:
+                      cpu: 50m
+                      memory: 64Mi
+                tolerations:
+                  - key: "arm"
+                    operator: "Equal"
+                    value: "true"
+                    effect: "NoSchedule"
+                  - key: "node.kubernetes.io/arch"
+                    operator: "Equal"
+                    value: "arm64"
+                    effect: "NoSchedule"
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Wait for test LoadBalancer IP assignment
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        name: metallb-test-service
+        namespace: default
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: test_lb_service
+      until: test_lb_service.resources[0].status.loadBalancer.ingress is defined
+      retries: 10
+      delay: 30
+
+    - name: Display MetalLB status
+      debug:
+        msg: |
+          ✅ MetalLB Load Balancer Status:
+          - Controller running: {{ metallb_controller.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+          - Speakers running: {{ metallb_speakers.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+          - IP Pool: 192.168.1.200-192.168.1.220
+          
+          🌐 Test LoadBalancer Service:
+          - Test Service IP: {{ test_lb_service.resources[0].status.loadBalancer.ingress[0].ip if test_lb_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+          - Test URL: http://{{ test_lb_service.resources[0].status.loadBalancer.ingress[0].ip if test_lb_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+          
+          📖 Next Steps:
+          1. Test LoadBalancer: curl http://{{ test_lb_service.resources[0].status.loadBalancer.ingress[0].ip if test_lb_service.resources[0].status.loadBalancer.ingress is defined else 'TEST_IP' }}
+          2. Deploy Ingress NGINX Controller (Task 2)
+          3. Deploy HAProxy for K3s API HA (Task 3)
+          
+          ✅ Task 1 Complete: MetalLB Load Balancer deployed successfully!
+
+    - name: Test LoadBalancer connectivity
+      uri:
+        url: "http://{{ test_lb_service.resources[0].status.loadBalancer.ingress[0].ip if test_lb_service.resources[0].status.loadBalancer.ingress is defined else '127.0.0.1' }}"
+        method: GET
+        timeout: 10
+      register: lb_test
+      ignore_errors: true
+      when: test_lb_service.resources[0].status.loadBalancer.ingress is defined
+
+    - name: Display connectivity test result
+      debug:
+        msg: |
+          🧪 LoadBalancer Connectivity Test:
+          {{ 'SUCCESS - Test nginx accessible via LoadBalancer' if lb_test.status == 200 else 'PENDING - LoadBalancer may still be initializing' if lb_test is defined else 'SKIPPED - LoadBalancer IP not ready' }}
+          {% if lb_test.status is defined %}
+          Status Code: {{ lb_test.status }}
+          {% endif %}
+
+    - name: Clean up temporary values file
+      file:
+        path: /tmp/metallb-values.yaml
+        state: absent 

@@ -1,0 +1,256 @@
+---
+- name: Check if NVIDIA GPU is available
+  shell: nvidia-smi --query-gpu=name --format=csv,noheader
+  register: gpu_check
+  failed_when: false
+  changed_when: false
+  
+- name: Display GPU information
+  debug:
+    msg: "GPU detected: {{ gpu_check.stdout | default('No NVIDIA GPU found') }}"
+
+- name: Label GPU node
+  shell: |
+    # Label the PC node as GPU-capable
+    PC_NODE=$(kubectl get nodes -o wide --no-headers | grep -v arm64 | grep -v aarch64 | head -1 | awk '{print $1}')
+    if [ ! -z "$PC_NODE" ]; then
+      kubectl label nodes $PC_NODE accelerator=gpu --overwrite
+      kubectl label nodes $PC_NODE node-role.kubernetes.io/gpu-worker=true --overwrite
+      kubectl label nodes $PC_NODE llm-capable=true --overwrite
+    fi
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  when: gpu_check.rc == 0
+
+- name: Create namespace for GPU resources
+  kubernetes.core.k8s:
+    name: gpu-system
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  when: gpu_check.rc == 0
+
+- name: Deploy NVIDIA Device Plugin
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: nvidia-device-plugin-daemonset
+        namespace: gpu-system
+      spec:
+        selector:
+          matchLabels:
+            name: nvidia-device-plugin-ds
+        updateStrategy:
+          type: RollingUpdate
+        template:
+          metadata:
+            labels:
+              name: nvidia-device-plugin-ds
+          spec:
+            tolerations:
+              - key: nvidia.com/gpu
+                operator: Exists
+                effect: NoSchedule
+            nodeSelector:
+              accelerator: gpu
+            priorityClassName: "system-node-critical"
+            containers:
+              - image: nvcr.io/nvidia/k8s-device-plugin:v0.14.5
+                name: nvidia-device-plugin-ctr
+                args: ["--fail-on-init-error=false"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                volumeMounts:
+                  - name: device-plugin
+                    mountPath: /var/lib/kubelet/device-plugins
+            volumes:
+              - name: device-plugin
+                hostPath:
+                  path: /var/lib/kubelet/device-plugins
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  when: gpu_check.rc == 0
+
+- name: Create LLM namespace
+  kubernetes.core.k8s:
+    name: llm
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create example LLM deployment template
+  copy:
+    content: |
+      # Example LLM deployment configuration
+      # This is a template - customize for your specific model
+      
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: llm-service
+        namespace: llm
+        labels:
+          app: llm-service
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: llm-service
+        template:
+          metadata:
+            labels:
+              app: llm-service
+          spec:
+            # Schedule only on GPU nodes
+            nodeSelector:
+              accelerator: gpu
+            
+            # Tolerate any taints on GPU node
+            tolerations:
+              - key: "gpuOnly"
+                operator: "Equal"
+                value: "true"
+                effect: "NoSchedule"
+            
+            containers:
+              - name: llm-server
+                # Replace with your LLM image
+                image: ghcr.io/huggingface/text-generation-inference:latest
+                ports:
+                  - containerPort: 80
+                    name: http
+                
+                # Resource requests for GPU
+                resources:
+                  limits:
+                    nvidia.com/gpu: 1
+                    memory: 16Gi
+                    cpu: 4000m
+                  requests:
+                    nvidia.com/gpu: 1
+                    memory: 8Gi
+                    cpu: 2000m
+                
+                # Environment variables (customize for your model)
+                env:
+                  - name: MODEL_ID
+                    value: "microsoft/DialoGPT-medium"
+                  - name: NUM_SHARD
+                    value: "1"
+                  - name: PORT
+                    value: "80"
+                  - name: QUANTIZE
+                    value: "bitsandbytes"
+                
+                # Readiness and liveness probes
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: 80
+                  initialDelaySeconds: 60
+                  periodSeconds: 10
+                
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 80
+                  initialDelaySeconds: 120
+                  periodSeconds: 30
+      
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: llm-service
+        namespace: llm
+      spec:
+        selector:
+          app: llm-service
+        ports:
+          - port: 80
+            targetPort: 80
+            name: http
+        type: ClusterIP
+      
+      ---
+      # NodePort for external access (optional)
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: llm-service-nodeport
+        namespace: llm
+      spec:
+        selector:
+          app: llm-service
+        ports:
+          - port: 80
+            targetPort: 80
+            nodePort: 30800
+            name: http
+        type: NodePort
+    dest: /tmp/llm-deployment-template.yaml
+    mode: '0644'
+
+- name: Wait for NVIDIA device plugin to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: gpu-system
+    label_selectors:
+      - name=nvidia-device-plugin-ds
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: nvidia_plugin_pods
+  until: nvidia_plugin_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+  retries: 15
+  delay: 30
+  when: gpu_check.rc == 0
+
+- name: Check GPU resource availability
+  shell: kubectl describe nodes | grep -A5 "nvidia.com/gpu"
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: gpu_resources
+  changed_when: false
+  when: gpu_check.rc == 0
+
+- name: Display GPU setup status
+  debug:
+    msg: |
+      ✅ GPU Support Status:
+      - NVIDIA GPU detected: {{ 'Yes' if gpu_check.rc == 0 else 'No' }}
+      {% if gpu_check.rc == 0 %}
+      - GPU: {{ gpu_check.stdout }}
+      - NVIDIA Device Plugin running: {{ nvidia_plugin_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }} pods
+      - GPU resources available in cluster: {{ 'Yes' if 'nvidia.com/gpu' in gpu_resources.stdout else 'No' }}
+      {% endif %}
+      
+      🎯 LLM Workload Setup:
+      - Namespace created: llm
+      - Node labeled with accelerator=gpu
+      - Template deployment available: /tmp/llm-deployment-template.yaml
+      
+      📝 Next Steps:
+      1. Customize the LLM deployment template for your model
+      2. Apply the deployment: kubectl apply -f /tmp/llm-deployment-template.yaml
+      3. Access your LLM service via NodePort :30800
+      
+      🔧 Architecture Benefits:
+      - GPU workloads automatically scheduled to Ubuntu node
+      - CPU workloads distributed across Pi workers
+      - Resource isolation and optimal performance
+      - Kubernetes-native GPU resource management
+      
+      💡 Model Suggestions:
+      - Small models: microsoft/DialoGPT-medium, gpt2
+      - Medium models: huggingface/CodeBERTa-small-v1
+      - Large models: Consider model quantization or cloud offload
+
+- name: Clean up template file (optional - keep for reference)
+  debug:
+    msg: "LLM deployment template saved to /tmp/llm-deployment-template.yaml for your use" 

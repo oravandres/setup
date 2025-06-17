@@ -1,0 +1,262 @@
+---
+# Networking Infrastructure Playbook
+# Deploys core networking components: MetalLB, Ingress-NGINX, HAProxy
+
+- name: "🌐 Core Networking Infrastructure Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    networking_components:
+      - name: "MetalLB LoadBalancer"
+        description: "Provides LoadBalancer services for bare-metal clusters"
+        enabled: "{{ deploy_metallb | default(true) }}"
+      - name: "Ingress-NGINX Controller"
+        description: "HTTP/HTTPS traffic routing and SSL termination"
+        enabled: "{{ deploy_ingress_nginx | default(true) }}"
+      - name: "HAProxy Load Balancer"
+        description: "K3s API server load balancing and VIP"
+        enabled: "{{ deploy_haproxy | default(true) }}"
+  
+  tasks:
+    - name: "Display networking deployment overview"
+      debug:
+        msg:
+          - "🌐 Starting Core Networking Infrastructure Deployment"
+          - "Components to deploy:"
+          - "{% for component in networking_components %}"
+          - "  • {{ component.name }}: {{ 'Enabled' if component.enabled else 'Disabled' }}"
+          - "    {{ component.description }}"
+          - "{% endfor %}"
+          - ""
+          - "Network Configuration:"
+          - "  • MetalLB IP Range: {{ metallb_ip_range }}"
+          - "  • Ingress-NGINX IP: 192.168.1.201"
+          - "  • HAProxy VIP: {{ vip_address }}"
+          - "  • Local Network: {{ local_network }}"
+
+    - name: "Verify K3s cluster is ready"
+      shell: kubectl get nodes --no-headers | grep Ready | wc -l
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: ready_nodes
+      failed_when: ready_nodes.stdout | int < 3
+      retries: 5
+      delay: 10
+
+    - name: "Display cluster readiness"
+      debug:
+        msg: "✅ K3s cluster is ready with {{ ready_nodes.stdout }} nodes"
+
+# Phase 1: Deploy MetalLB LoadBalancer
+- name: "📡 Phase 1: Deploy MetalLB LoadBalancer"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: "Deploy MetalLB LoadBalancer"
+      include_role:
+        name: metallb
+      when: deploy_metallb | default(true)
+      tags: ['metallb', 'loadbalancer']
+
+    - name: "Wait for MetalLB to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app=metallb -n metallb-system --timeout=300s
+        kubectl wait --for=condition=ready pod -l component=speaker -n metallb-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      when: deploy_metallb | default(true)
+      retries: 3
+      delay: 10
+
+    - name: "Verify MetalLB deployment"
+      shell: |
+        echo "=== MetalLB Controller ==="
+        kubectl get pods -n metallb-system -l app=metallb
+        echo ""
+        echo "=== MetalLB Speaker ==="
+        kubectl get pods -n metallb-system -l component=speaker
+        echo ""
+        echo "=== MetalLB Configuration ==="
+        kubectl get ipaddresspool -n metallb-system
+        kubectl get l2advertisement -n metallb-system
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: metallb_status
+      when: deploy_metallb | default(true)
+
+    - name: "Display MetalLB status"
+      debug:
+        msg: "{{ metallb_status.stdout_lines }}"
+      when: deploy_metallb | default(true)
+
+    - name: "Phase 1 Summary"
+      debug:
+        msg:
+          - "✅ Phase 1 Complete - MetalLB LoadBalancer"
+          - "  • MetalLB Controller: Deployed and ready"
+          - "  • MetalLB Speaker: Running on all nodes"
+          - "  • IP Address Pool: {{ metallb_ip_range }}"
+          - "  • LoadBalancer services now available"
+      when: deploy_metallb | default(true)
+
+# Phase 2: Deploy Ingress-NGINX Controller
+- name: "🚪 Phase 2: Deploy Ingress-NGINX Controller"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: "Deploy Ingress-NGINX Controller"
+      include_role:
+        name: ingress-nginx
+      when: deploy_ingress_nginx | default(true)
+      tags: ['ingress', 'nginx']
+
+    - name: "Wait for Ingress-NGINX to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=300s
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=default-backend -n ingress-nginx --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      when: deploy_ingress_nginx | default(true)
+      retries: 3
+      delay: 15
+
+    - name: "Verify Ingress-NGINX deployment"
+      shell: |
+        echo "=== Ingress-NGINX Controller ==="
+        kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller
+        echo ""
+        echo "=== Ingress-NGINX Service ==="
+        kubectl get svc -n ingress-nginx ingress-nginx-controller
+        echo ""
+        echo "=== Ingress Class ==="
+        kubectl get ingressclass
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: ingress_status
+      when: deploy_ingress_nginx | default(true)
+
+    - name: "Display Ingress-NGINX status"
+      debug:
+        msg: "{{ ingress_status.stdout_lines }}"
+      when: deploy_ingress_nginx | default(true)
+
+    - name: "Test Ingress-NGINX connectivity"
+      uri:
+        url: "http://192.168.1.201"
+        method: GET
+        status_code: 404  # Expected for default backend
+      register: ingress_connectivity_test
+      when: deploy_ingress_nginx | default(true)
+      retries: 5
+      delay: 10
+
+    - name: "Phase 2 Summary"
+      debug:
+        msg:
+          - "✅ Phase 2 Complete - Ingress-NGINX Controller"
+          - "  • Controller: Deployed and ready"
+          - "  • LoadBalancer IP: 192.168.1.201"
+          - "  • Default Backend: Running"
+          - "  • Ingress Class: nginx (default)"
+          - "  • HTTP/HTTPS traffic routing enabled"
+      when: deploy_ingress_nginx | default(true)
+
+# Phase 3: Deploy HAProxy for K3s API Load Balancing
+- name: "⚖️ Phase 3: Deploy HAProxy Load Balancer"
+  hosts: control_plane
+  become: true
+  tasks:
+    - name: "Deploy HAProxy for K3s API"
+      include_role:
+        name: ha-proxy
+      when: deploy_haproxy | default(true)
+      tags: ['haproxy', 'vip']
+
+# Verify HAProxy deployment
+- name: "🔍 Verify HAProxy Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: "Test HAProxy VIP connectivity"
+      uri:
+        url: "https://{{ vip_address }}:6443/version"
+        method: GET
+        validate_certs: false
+        timeout: 10
+      register: haproxy_test
+      when: deploy_haproxy | default(true)
+      retries: 5
+      delay: 10
+
+    - name: "Phase 3 Summary"
+      debug:
+        msg:
+          - "✅ Phase 3 Complete - HAProxy Load Balancer"
+          - "  • HAProxy: Deployed on all control plane nodes"
+          - "  • VIP Address: {{ vip_address }}"
+          - "  • K3s API: Load balanced across control plane"
+          - "  • High Availability: Enabled"
+          - "  • Stats Interface: http://{{ vip_address }}:8404"
+      when: deploy_haproxy | default(true)
+
+# Final networking verification
+- name: "✅ Final Networking Verification"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: "Comprehensive networking status check"
+      shell: |
+        echo "=== Cluster Nodes ==="
+        kubectl get nodes -o wide
+        echo ""
+        echo "=== LoadBalancer Services ==="
+        kubectl get svc -A --field-selector=spec.type=LoadBalancer
+        echo ""
+        echo "=== Ingress Resources ==="
+        kubectl get ingress -A
+        echo ""
+        echo "=== MetalLB Status ==="
+        kubectl get pods -n metallb-system
+        echo ""
+        echo "=== Ingress-NGINX Status ==="
+        kubectl get pods -n ingress-nginx
+        echo ""
+        echo "=== Network Policies ==="
+        kubectl get networkpolicy -A
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: final_networking_status
+
+    - name: "Display comprehensive networking status"
+      debug:
+        msg: "{{ final_networking_status.stdout_lines }}"
+
+    - name: "🎉 Networking Infrastructure Complete"
+      debug:
+        msg:
+          - "🎊 Core Networking Infrastructure Successfully Deployed!"
+          - ""
+          - "📡 MetalLB LoadBalancer:"
+          - "  • Status: {{ 'Active' if deploy_metallb | default(true) else 'Disabled' }}"
+          - "  • IP Pool: {{ metallb_ip_range }}"
+          - "  • Controller: Running in metallb-system namespace"
+          - ""
+          - "🚪 Ingress-NGINX Controller:"
+          - "  • Status: {{ 'Active' if deploy_ingress_nginx | default(true) else 'Disabled' }}"
+          - "  • LoadBalancer IP: 192.168.1.201"
+          - "  • HTTP Port: 80, HTTPS Port: 443"
+          - "  • Default Ingress Class: nginx"
+          - ""
+          - "⚖️ HAProxy Load Balancer:"
+          - "  • Status: {{ 'Active' if deploy_haproxy | default(true) else 'Disabled' }}"
+          - "  • VIP Address: {{ vip_address }}"
+          - "  • K3s API Endpoint: https://{{ vip_address }}:6443"
+          - "  • Stats: http://{{ vip_address }}:8404"
+          - ""
+          - "🚀 Network infrastructure is ready for applications!"
+          - "Next: Deploy storage and GitOps components" 

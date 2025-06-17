@@ -1,0 +1,107 @@
+---
+# Security & TLS Playbook
+# Deploy cert-manager for TLS automation and External-DNS for DNS management
+
+- name: "🔒 Deploy cert-manager for TLS Automation"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['security', 'tls', 'cert-manager']
+  
+  tasks:
+    - name: "Include cert-manager role"
+      include_role:
+        name: cert-manager
+      when: inventory_hostname in groups['control_plane']
+
+- name: "🌐 Deploy External-DNS for DNS Management"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['security', 'dns', 'external-dns']
+  
+  tasks:
+    - name: "Include External-DNS role"
+      include_role:
+        name: external-dns
+      when: inventory_hostname in groups['control_plane']
+
+- name: "🔐 Deploy TLS Management Components"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['security', 'tls']
+  
+  tasks:
+    - name: "Include TLS role"
+      include_role:
+        name: tls
+      when: inventory_hostname in groups['control_plane']
+
+- name: "🔐 Deploy Sealed Secrets for GitOps Secret Management"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['security', 'sealed-secrets', 'gitops']
+  
+  tasks:
+    - name: "Include Sealed Secrets role"
+      include_role:
+        name: k3s-addons/security/sealed-secrets
+      when: inventory_hostname in groups['control_plane']
+
+- name: "✅ Verify Security & TLS Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tags: ['verify']
+  
+  tasks:
+    - name: "Wait for cert-manager to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=cert-manager-webhook -n cert-manager --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=cert-manager-cainjector -n cert-manager --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: cert_manager_status
+      failed_when: cert_manager_status.rc != 0
+      changed_when: false
+
+    - name: "Wait for External-DNS to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=external-dns -n external-dns --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: external_dns_status
+      failed_when: external_dns_status.rc != 0
+      changed_when: false
+
+    - name: "Wait for Sealed Secrets controller to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l name=sealed-secrets-controller -n kube-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: sealed_secrets_status
+      failed_when: sealed_secrets_status.rc != 0
+      changed_when: false
+
+    - name: "Display security and TLS status"
+      debug:
+        msg:
+          - "🔒 cert-manager: {{ 'Ready' if cert_manager_status.rc == 0 else 'Failed' }}"
+          - "🌐 External-DNS: {{ 'Ready' if external_dns_status.rc == 0 else 'Failed' }}"
+          - "🔐 Sealed Secrets: {{ 'Ready' if sealed_secrets_status.rc == 0 else 'Failed' }}"
+          - ""
+          - "🔐 Security Features:"
+          - "  • Automated TLS certificate management"
+          - "  • DNS record automation"
+          - "  • GitOps-compatible secret management"
+          - "  • Encrypted secrets in Git repository"
+          - "  • Let's Encrypt integration"
+          - "  • Wildcard certificate support" 

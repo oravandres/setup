@@ -1,0 +1,67 @@
+---
+# Storage & GitOps Playbook
+# Deploy Longhorn distributed storage and ArgoCD for GitOps
+
+- name: "💾 Deploy Longhorn Distributed Storage"
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  serial: 1
+  tags: ['storage', 'longhorn']
+  
+  tasks:
+    - name: "Include Longhorn role"
+      include_role:
+        name: longhorn
+      when: inventory_hostname in groups['k3s_cluster']
+
+- name: "🔄 Deploy ArgoCD GitOps Platform"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['gitops', 'argocd']
+  
+  tasks:
+    - name: "Include ArgoCD role"
+      include_role:
+        name: argocd
+      when: inventory_hostname in groups['control_plane']
+
+- name: "✅ Verify Storage & GitOps Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tags: ['verify']
+  
+  tasks:
+    - name: "Wait for Longhorn system to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app=longhorn-manager -n longhorn-system --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=longhorn-driver-deployer -n longhorn-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: longhorn_status
+      failed_when: longhorn_status.rc != 0
+      changed_when: false
+
+    - name: "Wait for ArgoCD to be ready"
+      shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-application-controller -n argocd --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: argocd_status
+      failed_when: argocd_status.rc != 0
+      changed_when: false
+
+    - name: "Display storage and GitOps status"
+      debug:
+        msg:
+          - "💾 Longhorn Storage: {{ 'Ready' if longhorn_status.rc == 0 else 'Failed' }}"
+          - "🔄 ArgoCD GitOps: {{ 'Ready' if argocd_status.rc == 0 else 'Failed' }}"
+          - ""
+          - "🌐 Access URLs:"
+          - "  • Longhorn UI: https://longhorn.k3s.local"
+          - "  • ArgoCD UI: https://argocd.k3s.local" 

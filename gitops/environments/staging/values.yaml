@@ -1,0 +1,114 @@
+# Staging Environment Configuration
+---
+global:
+  environment: staging
+  domain: "staging.cluster.local"
+  cluster_name: "k3s-staging"
+  
+# ArgoCD Configuration
+argocd:
+  enabled: true
+  domain: "argocd.staging.cluster.local"
+  admin_password: "admin456!"
+  cert_issuer: "letsencrypt-staging"
+  oidc_enabled: false
+  resources:
+    server:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 300m
+        memory: 512Mi
+    controller:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 750m
+        memory: 1Gi
+
+# cert-manager Configuration
+cert_manager:
+  enabled: true
+  cert_issuer: "letsencrypt-staging"
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  create_wildcard_cert: true
+
+# MetalLB Configuration  
+metallb:
+  enabled: true
+  ip_pool:
+    addresses:
+      - "192.168.1.120-192.168.1.140"  # Staging range - medium pool
+  resources:
+    controller:
+      requests:
+        cpu: 75m
+        memory: 96Mi
+      limits:
+        cpu: 150m
+        memory: 192Mi
+    speaker:
+      requests:
+        cpu: 75m
+        memory: 96Mi
+      limits:
+        cpu: 150m
+        memory: 192Mi
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  prometheus:
+    retention: "15d"  # Medium retention for staging
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+  grafana:
+    enabled: true
+    admin_password: "grafana456"
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  class: "nginx"
+  tls_enabled: true  # Enable TLS for staging testing
+
+# Storage Configuration
+storage:
+  longhorn:
+    enabled: true
+    replicas: 2  # Reduced replicas for staging
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"  # Daily backups
+
+# Security Configuration
+security:
+  networkpolicies: true   # Enable security testing
+  podsecuritypolicies: true
+
+# Sealed Secrets Configuration
+sealed_secrets:
+  enabled: true
+  resources:
+    requests:
+      cpu: 75m
+      memory: 96Mi
+    limits:
+      cpu: 150m
+      memory: 192Mi
+  metrics:
+    enabled: true
+  log_level: "info"  # Standard logging for staging 

@@ -1,0 +1,468 @@
+---
+- name: Add Ingress NGINX Helm repository
+  kubernetes.core.helm_repository:
+    name: ingress-nginx
+    repo_url: https://kubernetes.github.io/ingress-nginx
+
+- name: Create namespace for Ingress NGINX
+  kubernetes.core.k8s:
+    name: ingress-nginx
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create Ingress NGINX values configuration
+  copy:
+    content: |
+      # Ingress NGINX configuration optimized for heterogeneous cluster (1 PC + 6 Pis)
+      # Replaces disabled Traefik with modern ingress controller
+      
+      controller:
+        # Use specific ingress-nginx version that supports multi-arch
+        image:
+          tag: "v1.11.2"
+          
+        # Deploy as DaemonSet with hostNetwork for direct MetalLB Layer 2 integration
+        kind: DaemonSet
+        hostNetwork: true
+        
+        # Resource limits optimized for mixed hardware
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+        
+        # Service configuration - use LoadBalancer with MetalLB (updated for new IP range)
+        service:
+          type: LoadBalancer
+          loadBalancerIP: 10.0.0.31  # Use IP from MetalLB range (10.0.0.30-50)
+          annotations:
+            metallb.universe.tf/allow-shared-ip: "ingress-nginx"
+          ports:
+            http: 80
+            https: 443
+          targetPorts:
+            http: http
+            https: https
+          externalTrafficPolicy: Local  # Ensure traffic stays on announcing node with DaemonSet
+          
+        # Enable ModSecurity WAF capabilities
+        enableModsecurity: true
+        enableOWASPcoreRules: true
+        modsecurity:
+          transactionId: "$request_id"
+          
+        # Configure as default ingress class
+        ingressClassResource:
+          default: true
+          enabled: true
+          name: nginx
+          
+        # Node affinity - prefer powerful nodes for ingress traffic
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: kubernetes.io/arch
+                      operator: In
+                      values: ["amd64"]  # Prefer PC for ingress
+              - weight: 50
+                preference:
+                  matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: Exists
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchExpressions:
+                      - key: app.kubernetes.io/name
+                        operator: In
+                        values: ["ingress-nginx"]
+                      - key: app.kubernetes.io/component
+                        operator: In
+                        values: ["controller"]
+                  topologyKey: kubernetes.io/hostname
+        
+        # Multi-arch tolerations
+        tolerations:
+          - key: "arm"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          - key: "node.kubernetes.io/arch"
+            operator: "Equal"
+            value: "arm64"
+            effect: "NoSchedule"
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
+            effect: "NoSchedule"
+        
+        # Configuration for better performance
+        config:
+          # Enable real IP preservation
+          use-forwarded-headers: "true"
+          compute-full-forwarded-for: "true"
+          use-proxy-protocol: "false"
+          
+          # SSL configuration
+          ssl-protocols: "TLSv1.2 TLSv1.3"
+          ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+          
+          # Performance tuning
+          worker-processes: "auto"
+          max-worker-connections: "16384"
+          upstream-keepalive-connections: "320"
+          upstream-keepalive-requests: "100"
+          upstream-keepalive-timeout: "60"
+          
+          # Enable gzip compression
+          enable-gzip: "true"
+          gzip-types: "application/atom+xml application/javascript application/x-javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/plain text/x-component"
+          
+          # Security headers
+          add-headers: "ingress-nginx/custom-headers"
+          
+        # Enable metrics for Prometheus monitoring
+        metrics:
+          enabled: true
+          serviceMonitor:
+            enabled: true
+            namespace: monitoring
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+              
+        # Pod disruption budget for HA
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+          
+      # Default backend configuration
+      defaultBackend:
+        enabled: true
+        image:
+          tag: "1.5"
+        resources:
+          limits:
+            cpu: 20m
+            memory: 32Mi
+          requests:
+            cpu: 10m
+            memory: 16Mi
+        tolerations:
+          - key: "arm"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          - key: "node.kubernetes.io/arch"
+            operator: "Equal"
+            value: "arm64"
+            effect: "NoSchedule"
+    dest: /tmp/ingress-nginx-values.yaml
+    mode: '0644'
+
+- name: Create custom headers ConfigMap for security
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: custom-headers
+        namespace: ingress-nginx
+      data:
+        X-Frame-Options: "SAMEORIGIN"
+        X-Content-Type-Options: "nosniff"
+        X-XSS-Protection: "1; mode=block"
+        Referrer-Policy: "strict-origin-when-cross-origin"
+        Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Deploy Ingress NGINX v1.11 with custom configuration
+  kubernetes.core.helm:
+    name: ingress-nginx
+    chart_ref: ingress-nginx/ingress-nginx
+    chart_version: "^4.11.0"  # Chart version that includes ingress-nginx v1.11
+    release_namespace: ingress-nginx
+    create_namespace: true
+    values_files:
+      - /tmp/ingress-nginx-values.yaml
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    wait: true
+    timeout: 10m
+
+- name: Wait for Ingress NGINX controller to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: ingress-nginx
+    label_selectors:
+      - app.kubernetes.io/name=ingress-nginx
+      - app.kubernetes.io/component=controller
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: ingress_pods
+  until: ingress_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+  retries: 20
+  delay: 30
+
+- name: Wait for LoadBalancer IP assignment
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: ingress-nginx-controller
+    namespace: ingress-nginx
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: ingress_service
+  until: ingress_service.resources[0].status.loadBalancer.ingress is defined
+  retries: 10
+  delay: 30
+
+- name: Create test ingress application
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: test-webapp
+        namespace: default
+        labels:
+          app: test-webapp
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: test-webapp
+        template:
+          metadata:
+            labels:
+              app: test-webapp
+          spec:
+            containers:
+            - name: nginx
+              image: nginx:alpine
+              ports:
+              - containerPort: 80
+              volumeMounts:
+              - name: html
+                mountPath: /usr/share/nginx/html
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+            volumes:
+            - name: html
+              configMap:
+                name: test-webapp-html
+            tolerations:
+              - key: "arm"
+                operator: "Equal"
+                value: "true"
+                effect: "NoSchedule"
+              - key: "node.kubernetes.io/arch"
+                operator: "Equal"
+                value: "arm64"
+                effect: "NoSchedule"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create test webapp HTML content
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: test-webapp-html
+        namespace: default
+      data:
+        index.html: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>K3s Cluster Test</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 40px; background: #f0f0f0; }
+                  .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                  .status { color: #28a745; font-weight: bold; }
+                  .info { background: #e9ecef; padding: 10px; border-radius: 5px; margin: 10px 0; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🎉 K3s HA Cluster Test</h1>
+                  <p class="status">✅ Ingress NGINX is working!</p>
+                  <div class="info">
+                      <h3>Cluster Information:</h3>
+                      <ul>
+                          <li>Hybrid Architecture: 1 PC + 6 Raspberry Pi 4B</li>
+                          <li>LoadBalancer: MetalLB</li>
+                          <li>Ingress: NGINX Ingress Controller</li>
+                          <li>Storage: Longhorn (if deployed)</li>
+                          <li>Monitoring: Prometheus + Grafana</li>
+                          <li>GitOps: ArgoCD</li>
+                          <li>Logging: Loki + Fluent Bit</li>
+                      </ul>
+                  </div>
+                  <p><strong>Hostname:</strong> <span id="hostname">Loading...</span></p>
+              </div>
+              <script>
+                  document.getElementById('hostname').textContent = window.location.hostname;
+              </script>
+          </body>
+          </html>
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create test webapp service
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: test-webapp
+        namespace: default
+        labels:
+          app: test-webapp
+      spec:
+        type: ClusterIP
+        ports:
+          - port: 80
+            targetPort: 80
+            protocol: TCP
+        selector:
+          app: test-webapp
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Create test ingress
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: test-webapp-ingress
+        namespace: default
+        annotations:
+          nginx.ingress.kubernetes.io/rewrite-target: /
+          nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      spec:
+        ingressClassName: nginx
+        rules:
+        - host: test.k3s.local
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: test-webapp
+                  port:
+                    number: 80
+        - http:  # Default rule for IP access
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: test-webapp
+                  port:
+                    number: 80
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Verify ingress controller deployment
+  shell: kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --no-headers | grep Running | wc -l
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: running_controllers
+  changed_when: false
+
+- name: Display Ingress NGINX status
+  debug:
+    msg: |
+      ✅ Ingress NGINX v1.11 Status:
+      - Controllers running: {{ running_controllers.stdout }}
+      - LoadBalancer IP: {{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+      - Default backend ready: {{ 'Yes' if ingress_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1 else 'No' }}
+      
+      🌐 Access Points:
+      - HTTP: http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+      - HTTPS: https://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+      - Test App: http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+      
+      📋 Test Commands:
+      - curl http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+      - Add to /etc/hosts: {{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }} test.k3s.local
+      - curl http://test.k3s.local
+      
+      🛡️ ModSecurity WAF Test:
+      - curl "http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}/?id=<script>alert('xss')</script>"
+      - Expected: 403 Forbidden (blocked by WAF)
+      
+      🔧 Configuration:
+      - Deployment: DaemonSet with hostNetwork
+      - ModSecurity WAF: Enabled with OWASP CRS
+      - Default ingress class: nginx
+      - SSL protocols: TLSv1.2, TLSv1.3
+      - Gzip compression: Enabled
+      - Security headers: Enabled
+      - Prometheus metrics: Enabled
+      
+      🛠️ Validation:
+      - Run: /usr/local/bin/validate-ingress-nginx
+
+- name: Test ingress connectivity
+  uri:
+    url: "http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else '127.0.0.1' }}"
+    method: GET
+    timeout: 10
+  register: ingress_test
+  ignore_errors: true
+  when: ingress_service.resources[0].status.loadBalancer.ingress is defined
+
+- name: Test ModSecurity WAF blocking capability
+  uri:
+    url: "http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else '127.0.0.1' }}/?id=<script>alert('xss')</script>"
+    method: GET
+    timeout: 10
+    status_code: [403, 406]  # Expect WAF to block with 403 or 406
+  register: waf_test
+  ignore_errors: true
+  when: ingress_service.resources[0].status.loadBalancer.ingress is defined
+
+- name: Display connectivity and WAF test results
+  debug:
+    msg: |
+      🧪 Ingress Connectivity Test:
+      {{ 'SUCCESS - Test application accessible via ingress' if ingress_test.status == 200 else 'PENDING - Ingress may still be initializing' if ingress_test is defined else 'SKIPPED - LoadBalancer IP not ready' }}
+      {% if ingress_test.status is defined %}
+      Status Code: {{ ingress_test.status }}
+      {% endif %}
+      
+      🛡️ ModSecurity WAF Test:
+      {{ 'SUCCESS - WAF blocking malicious requests (Status: ' + waf_test.status|string + ')' if waf_test.status in [403, 406] else 'WARNING - WAF may not be blocking as expected' if waf_test is defined else 'SKIPPED - LoadBalancer IP not ready' }}
+      {% if waf_test.status is defined and waf_test.status not in [403, 406] %}
+      Unexpected Status Code: {{ waf_test.status }} (Expected: 403 or 406)
+      {% endif %}
+
+- name: Copy Ingress-NGINX validation script
+  copy:
+    src: validate-ingress-nginx.sh
+    dest: /usr/local/bin/validate-ingress-nginx
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Clean up temporary values file
+  file:
+    path: /tmp/ingress-nginx-values.yaml
+    state: absent 

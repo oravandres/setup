@@ -1,0 +1,71 @@
+---
+# Backup & Maintenance Playbook
+# Deploy etcd backup and maintenance automation
+
+- name: "🛡️ Deploy etcd Backup System"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  tags: ['maintenance', 'backup', 'etcd']
+  
+  tasks:
+    - name: "Include etcd-backup role"
+      include_role:
+        name: etcd-backup
+      when: inventory_hostname in groups['control_plane']
+
+- name: "🔧 Deploy HA Testing Components"
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  run_once: true
+  tags: ['maintenance', 'ha-testing']
+  
+  tasks:
+    - name: "Include HA testing role"
+      include_role:
+        name: ha-testing
+      when: inventory_hostname in groups['control_plane']
+
+- name: "✅ Verify Backup & Maintenance Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tags: ['verify']
+  
+  tasks:
+    - name: "Check etcd backup cronjobs"
+      shell: |
+        kubectl get cronjobs -n kube-system -l app=etcd-backup --no-headers | wc -l
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: backup_cronjobs
+      changed_when: false
+      failed_when: false
+
+    - name: "Check backup storage"
+      shell: |
+        kubectl get pvc -n kube-system -l app=etcd-backup --no-headers | wc -l
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
+      register: backup_storage
+      changed_when: false
+      failed_when: false
+
+    - name: "Display backup and maintenance status"
+      debug:
+        msg:
+          - "🛡️ etcd Backup CronJobs: {{ backup_cronjobs.stdout if backup_cronjobs.stdout != '0' else 'Not configured' }}"
+          - "💾 Backup Storage: {{ 'Configured' if backup_storage.stdout != '0' else 'Not configured' }}"
+          - ""
+          - "🔧 Maintenance Features:"
+          - "  • Automated etcd snapshots"
+          - "  • Backup retention policies"
+          - "  • HA testing automation"
+          - "  • Cluster health monitoring"
+          - ""
+          - "⏰ Backup Schedule:"
+          - "  • Daily snapshots at 02:00 UTC"
+          - "  • Weekly full backups"
+          - "  • 30-day retention policy" 
