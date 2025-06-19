@@ -1,342 +1,626 @@
 # Operations Guide
 
-This guide covers day-to-day operational procedures for managing the K3s-based infrastructure platform.
+**Day-to-day operational procedures for K3s homelab cluster management.**
 
-## 📊 Monitoring & Observability
+## 🎯 Overview
 
-### Prometheus Stack Overview
+This guide covers essential operational tasks for maintaining the K3s homelab cluster, including monitoring, troubleshooting, scaling, backup/restore, and routine maintenance procedures.
 
-Our monitoring solution consists of:
-- **Prometheus**: Metrics collection and storage
-- **Grafana**: Visualization and dashboards
-- **AlertManager**: Alert routing and notifications
-- **Loki**: Log aggregation and querying
+## 📊 Daily Operations
 
-### Accessing Monitoring Services
+### Cluster Health Checks
 
+**Morning Health Check Routine:**
 ```bash
-# Port forward to access Grafana locally
-kubectl port-forward -n monitoring svc/grafana 3000:80
+#!/bin/bash
+# Daily cluster health check script
 
-# Port forward to access Prometheus
-kubectl port-forward -n monitoring svc/prometheus-server 9090:80
+echo "=== K3s Cluster Health Check ==="
+echo "Date: $(date)"
+echo
 
-# Port forward to access AlertManager
-kubectl port-forward -n monitoring svc/alertmanager 9093:9093
+# Node status
+echo "🖥️  Node Status:"
+kubectl get nodes -o wide
+echo
+
+# Pod health across all namespaces
+echo "🚀 Pod Health Summary:"
+kubectl get pods -A --field-selector=status.phase!=Running | head -10
+echo
+
+# Critical service status
+echo "⚙️  Critical Services:"
+kubectl get pods -n kube-system | grep -E "(coredns|metrics-server)"
+kubectl get pods -n argocd | grep argocd-server
+kubectl get pods -n monitoring | grep -E "(prometheus|grafana)"
+kubectl get pods -n longhorn-system | grep longhorn-manager | head -3
+echo
+
+# Storage status
+echo "💾 Storage Health:"
+kubectl get storageclass
+kubectl get pv | grep -v Available | head -5
+echo
+
+# LoadBalancer services
+echo "🔄 LoadBalancer Services:"
+kubectl get svc -A --field-selector=spec.type=LoadBalancer
+echo
+
+# Recent events (last 1 hour)
+echo "📋 Recent Events:"
+kubectl get events --sort-by=.metadata.creationTimestamp -A | tail -10
 ```
 
-### Key Metrics to Monitor
-
-#### Node-Level Metrics
-- **CPU Usage**: `100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`
-- **Memory Usage**: `(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`
-- **Disk Usage**: `100 - ((node_filesystem_avail_bytes * 100) / node_filesystem_size_bytes)`
-- **Network I/O**: `rate(node_network_receive_bytes_total[5m])` and `rate(node_network_transmit_bytes_total[5m])`
-
-#### Cluster-Level Metrics
-- **Pod Status**: Monitor pod restarts, failures, and pending states
-- **Node Status**: Track node readiness and resource capacity
-- **API Server**: Monitor API server latency and error rates
-- **etcd**: Watch etcd cluster health and performance
-
-#### Application Metrics
-- **Request Rate**: HTTP requests per second
-- **Response Time**: 95th percentile response times
-- **Error Rate**: HTTP error rates (4xx, 5xx)
-- **Resource Usage**: Application CPU and memory consumption
-
-### Setting Up Alerts
-
-Default alerting rules are configured for:
-- High CPU/Memory usage (>80% for 5 minutes)
-- Disk space low (<10% free)
-- Pod restart loops
-- Node down conditions
-- Certificate expiration warnings
-
-## 🔄 Backup & Recovery
-
-### Automated Backup Strategy
-
-#### etcd Backups
+**Save as `/usr/local/bin/cluster-health-check` and run daily:**
 ```bash
-# Manual etcd backup
-sudo k3s etcd-snapshot save
-
-# View existing snapshots
-sudo k3s etcd-snapshot ls
-
-# Restore from snapshot (CAUTION: This will replace current data)
-sudo k3s etcd-snapshot restore snapshot-name
+sudo chmod +x /usr/local/bin/cluster-health-check
+cluster-health-check
 ```
 
-#### Longhorn Volume Backups
+### Service Monitoring
+
+**Check specific service health:**
 ```bash
-# Create volume backup (via Longhorn UI or kubectl)
-kubectl apply -f - <<EOF
-apiVersion: longhorn.io/v1beta1
-kind: Backup
-metadata:
-  name: backup-$(date +%Y%m%d-%H%M%S)
-  namespace: longhorn-system
-spec:
-  snapshotName: snapshot-name
-EOF
+# ArgoCD status
+kubectl get applications -n argocd -o custom-columns="NAME:.metadata.name,HEALTH:.status.health.status,SYNC:.status.sync.status"
+
+# Prometheus targets
+kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090 &
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | select(.health != "up") | .labels.job'
+
+# Grafana dashboards
+kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80 &
+curl -s http://admin:prom-operator@localhost:3000/api/health
+
+# Longhorn storage
+kubectl get volumes -n longhorn-system -o custom-columns="NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness"
 ```
 
-#### Application Data Backups
-```bash
-# Example: Backup PostgreSQL database
-kubectl exec -n app-namespace postgres-pod -- pg_dump -U username dbname > backup.sql
+## 🔧 Routine Maintenance
 
-# Example: Backup persistent volumes
-kubectl exec -n app-namespace app-pod -- tar czf - /data | gzip > volume-backup.tar.gz
+### Weekly Maintenance Tasks
+
+**System Updates (via Ansible):**
+```bash
+# Update all nodes
+ansible all -i infrastructure/inventory/production/hosts.yaml \
+  -m shell -a "sudo apt update && sudo apt upgrade -y" \
+  --become
+
+# Restart nodes if kernel updates (one at a time)
+ansible pi-n1 -i infrastructure/inventory/production/hosts.yaml \
+  -m reboot --become
+
+# Wait and verify node is back
+kubectl wait --for=condition=Ready node/pi-n1 --timeout=300s
 ```
 
-### Recovery Procedures
-
-#### Cluster Recovery
-1. **Single Node Failure**: K3s automatically handles single node failures
-2. **Control Plane Recovery**: Restore from etcd snapshot if control plane is corrupted
-3. **Complete Cluster Rebuild**: Use Ansible playbooks to rebuild from scratch
-
-#### Application Recovery
-1. **Pod Recovery**: Kubernetes automatically restarts failed pods
-2. **Volume Recovery**: Restore from Longhorn backups
-3. **Database Recovery**: Restore from database-specific backups
-
-### Backup Verification
+**Certificate Renewal Check:**
 ```bash
-# Test etcd snapshot integrity
-sudo k3s etcd-snapshot ls --name snapshot-name
+# Check certificate expiration
+kubectl get certificates -A -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[0].status,AGE:.metadata.creationTimestamp"
 
-# Verify Longhorn backup status
-kubectl get backups -n longhorn-system
-
-# Test application backup restoration in dev environment
-# (Always test backups in non-production first)
+# Force certificate renewal if needed
+kubectl delete certificate <cert-name> -n <namespace>
+# cert-manager will automatically recreate
 ```
 
-## ⚖️ Scaling Procedures
+**Log Rotation and Cleanup:**
+```bash
+# Clean up old container logs (on each node)
+ansible all -i infrastructure/inventory/production/hosts.yaml \
+  -m shell -a "sudo find /var/log/containers/ -name '*.log' -mtime +7 -delete" \
+  --become
+
+# Clean up old pod logs in Loki (if retention policy isn't working)
+kubectl exec -n monitoring loki-0 -- /usr/bin/loki -config.file=/etc/loki/loki.yaml -target=table-manager -table-manager.retention-deletes-enabled=true
+```
+
+### Monthly Maintenance Tasks
+
+**Backup Verification:**
+```bash
+# Verify etcd backups
+ansible pi-m2 -i infrastructure/inventory/production/hosts.yaml \
+  -m shell -a "sudo k3s etcd-snapshot ls" --become
+
+# Test backup restore (on dev environment)
+ansible localhost -i infrastructure/inventory/dev/hosts.yaml \
+  -m shell -a "sudo k3s etcd-snapshot restore /path/to/backup" --become
+```
+
+**Security Updates:**
+```bash
+# Update K3s version (rolling update)
+ansible-playbook -i infrastructure/inventory/production/hosts.yaml \
+  infrastructure/playbooks/upgrade-k3s.yaml
+
+# Update Helm charts
+helm repo update
+helm list -A -o json | jq -r '.[] | "\(.name) \(.namespace)"' | while read name namespace; do
+  echo "Checking $name in $namespace..."
+  helm upgrade $name $name --namespace $namespace --reuse-values
+done
+```
+
+## 🚨 Incident Response
+
+### Emergency Procedures
+
+**Cluster-Wide Outage:**
+```bash
+# 1. Check node connectivity
+ansible all -i infrastructure/inventory/production/hosts.yaml -m ping
+
+# 2. Check K3s service status on control nodes
+ansible pi-m2,pi-m3,dream-machine -i infrastructure/inventory/production/hosts.yaml \
+  -m shell -a "sudo systemctl status k3s" --become
+
+# 3. Restart K3s if needed (one control node at a time)
+ansible pi-m2 -i infrastructure/inventory/production/hosts.yaml \
+  -m systemd -a "name=k3s state=restarted" --become
+
+# 4. Wait for cluster to stabilize
+kubectl wait --for=condition=Ready nodes --all --timeout=300s
+
+# 5. Verify critical services
+kubectl get pods -n kube-system,argocd,monitoring
+```
+
+**Storage System Failure:**
+```bash
+# 1. Check Longhorn system health
+kubectl get pods -n longhorn-system
+kubectl get volumes -n longhorn-system
+
+# 2. Check node storage status
+ansible all -i infrastructure/inventory/production/hosts.yaml \
+  -m shell -a "df -h /opt/longhorn" --become
+
+# 3. Restart Longhorn if needed
+kubectl rollout restart daemonset/longhorn-manager -n longhorn-system
+kubectl rollout restart deployment/longhorn-ui -n longhorn-system
+
+# 4. Verify volume attachments
+kubectl get volumeattachments
+```
+
+**Network Connectivity Issues:**
+```bash
+# 1. Check MetalLB status
+kubectl get pods -n metallb-system
+kubectl get ipaddresspools -n metallb-system
+
+# 2. Test ingress connectivity
+kubectl get ingress -A
+kubectl get svc -A --field-selector=spec.type=LoadBalancer
+
+# 3. Check DNS resolution
+kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup kubernetes.default.svc.cluster.local
+
+# 4. Restart networking components if needed
+kubectl rollout restart daemonset/ingress-nginx-controller -n ingress-nginx
+kubectl rollout restart daemonset/metallb-speaker -n metallb-system
+```
+
+### Troubleshooting Common Issues
+
+**Pod Stuck in Pending State:**
+```bash
+# Check pod events and describe
+kubectl describe pod <pod-name> -n <namespace>
+
+# Check node resources
+kubectl top nodes
+kubectl describe node <node-name>
+
+# Check storage class and PVCs
+kubectl get storageclass
+kubectl get pvc -n <namespace>
+
+# Common fixes:
+# - Scale down other pods: kubectl scale deployment <name> --replicas=0
+# - Delete failed PVCs: kubectl delete pvc <pvc-name>
+# - Restart kubelet: ansible <node> -m systemd -a "name=kubelet state=restarted" --become
+```
+
+**Application Not Accessible:**
+```bash
+# Check ingress configuration
+kubectl get ingress -n <namespace>
+kubectl describe ingress <ingress-name> -n <namespace>
+
+# Check service endpoints
+kubectl get endpoints -n <namespace>
+kubectl describe service <service-name> -n <namespace>
+
+# Test internal connectivity
+kubectl run -it --rm debug --image=busybox --restart=Never -- wget -qO- http://<service-name>.<namespace>.svc.cluster.local
+
+# Check ingress controller logs
+kubectl logs -n ingress-nginx deployment/ingress-nginx-controller
+```
+
+**ArgoCD Sync Issues:**
+```bash
+# Check application status
+kubectl get applications -n argocd
+kubectl describe application <app-name> -n argocd
+
+# Force refresh and sync
+kubectl patch application <app-name> -n argocd \
+  -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"HEAD"}}}' \
+  --type=merge
+
+# Check ArgoCD server logs
+kubectl logs -n argocd deployment/argocd-server
+
+# Reset application if needed
+kubectl delete application <app-name> -n argocd
+kubectl apply -f gitops/argocd/applications-appset.yaml
+```
+
+## 📈 Scaling Operations
 
 ### Horizontal Scaling
 
-#### Adding Worker Nodes
-```bash
-# Run Ansible playbook to add new nodes
-cd infrastructure/
-ansible-playbook -i inventory/production/hosts.yaml playbooks/scale-cluster.yaml --extra-vars "new_nodes=node4,node5"
-```
-
-#### Scaling Applications
+**Scale Applications:**
 ```bash
 # Scale deployment manually
-kubectl scale deployment app-name --replicas=5 -n app-namespace
+kubectl scale deployment <app-name> --replicas=5 -n <namespace>
 
-# Enable Horizontal Pod Autoscaler (HPA)
-kubectl autoscale deployment app-name --cpu-percent=80 --min=2 --max=10 -n app-namespace
+# Enable HPA for automatic scaling
+kubectl autoscale deployment <app-name> --cpu-percent=70 --min=2 --max=10 -n <namespace>
 
-# View HPA status
-kubectl get hpa -n app-namespace
+# Check HPA status
+kubectl get hpa -n <namespace>
+kubectl describe hpa <app-name> -n <namespace>
+```
+
+**Add Worker Nodes:**
+```bash
+# 1. Prepare new node with Ansible
+ansible-playbook -i infrastructure/inventory/production/hosts.yaml \
+  infrastructure/playbooks/add-node.yaml \
+  --extra-vars "target_node=pi-n5"
+
+# 2. Verify node joined
+kubectl get nodes -o wide
+
+# 3. Label node appropriately
+kubectl label node pi-n5 node-role.kubernetes.io/worker=true
+kubectl label node pi-n5 nodepool=workers
+
+# 4. Test workload scheduling
+kubectl run test-pod --image=nginx --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"pi-n5"}}}'
 ```
 
 ### Vertical Scaling
 
-#### Increasing Node Resources
-1. **Physical/VM Resources**: Add CPU/Memory to nodes via hypervisor
-2. **Update Kubernetes**: Restart kubelet to recognize new resources
-3. **Verify**: Check `kubectl describe nodes` for updated capacity
-
-#### Application Resource Limits
+**Increase Resource Limits:**
 ```bash
-# Update deployment resource limits
-kubectl patch deployment app-name -n app-namespace -p '{"spec":{"template":{"spec":{"containers":[{"name":"container-name","resources":{"limits":{"cpu":"2","memory":"4Gi"},"requests":{"cpu":"1","memory":"2Gi"}}}]}}}}'
+# Update deployment resources
+kubectl patch deployment <app-name> -n <namespace> \
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"<container-name>","resources":{"requests":{"cpu":"500m","memory":"1Gi"},"limits":{"cpu":"1000m","memory":"2Gi"}}}]}}}}'
+
+# Install VPA for automatic vertical scaling
+kubectl apply -f https://github.com/kubernetes/autoscaler/releases/latest/download/vpa-release.yaml
+
+# Create VPA for application
+kubectl apply -f - <<EOF
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: <app-name>-vpa
+  namespace: <namespace>
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: <app-name>
+  updatePolicy:
+    updateMode: "Auto"
+EOF
 ```
 
-### Storage Scaling
+## 💾 Backup and Recovery
 
-#### Expanding Longhorn Volumes
+### Automated Backup Procedures
+
+**etcd Backup (Daily via Cron):**
 ```bash
-# Expand persistent volume
-kubectl patch pvc pvc-name -n app-namespace -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
+# Create backup script
+cat > /usr/local/bin/k3s-backup.sh << 'EOF'
+#!/bin/bash
+BACKUP_DIR="/opt/k3s-backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_NAME="k3s-backup-${DATE}"
 
-# Verify expansion
-kubectl get pvc -n app-namespace
+mkdir -p ${BACKUP_DIR}
+sudo k3s etcd-snapshot save ${BACKUP_DIR}/${BACKUP_NAME}
+
+# Keep only last 7 days of backups
+find ${BACKUP_DIR} -name "k3s-backup-*" -mtime +7 -delete
+
+# Upload to S3 (if configured)
+# aws s3 cp ${BACKUP_DIR}/${BACKUP_NAME} s3://my-backup-bucket/k3s/
+EOF
+
+sudo chmod +x /usr/local/bin/k3s-backup.sh
+
+# Add to crontab (run daily at 2 AM)
+echo "0 2 * * * /usr/local/bin/k3s-backup.sh" | sudo crontab -
 ```
 
-## 🔧 Troubleshooting
-
-### Common Issues and Solutions
-
-#### Node Issues
+**Application Data Backup:**
 ```bash
-# Check node status
+# Backup persistent volumes using Longhorn
+kubectl apply -f - <<EOF
+apiVersion: longhorn.io/v1beta1
+kind: RecurringJob
+metadata:
+  name: backup-daily
+  namespace: longhorn-system
+spec:
+  cron: "0 3 * * *"
+  task: "backup"
+  groups:
+  - "production"
+  retain: 7
+  concurrency: 2
+EOF
+
+# Manual volume backup
+kubectl apply -f - <<EOF
+apiVersion: longhorn.io/v1beta1
+kind: Backup
+metadata:
+  name: manual-backup-$(date +%s)
+  namespace: longhorn-system
+spec:
+  snapshotName: "snapshot-$(date +%s)"
+  labels:
+    "backup-type": "manual"
+EOF
+```
+
+### Recovery Procedures
+
+**Cluster Recovery from etcd Backup:**
+```bash
+# 1. Stop K3s on all nodes
+ansible all -i infrastructure/inventory/production/hosts.yaml \
+  -m systemd -a "name=k3s state=stopped" --become
+
+# 2. Restore etcd backup on first control node
+ansible pi-m2 -i infrastructure/inventory/production/hosts.yaml \
+  -m shell -a "sudo k3s etcd-snapshot restore /opt/k3s-backups/k3s-backup-YYYYMMDD_HHMMSS" \
+  --become
+
+# 3. Start K3s on first control node
+ansible pi-m2 -i infrastructure/inventory/production/hosts.yaml \
+  -m systemd -a "name=k3s state=started" --become
+
+# 4. Wait for cluster to be ready
+kubectl wait --for=condition=Ready nodes --timeout=300s
+
+# 5. Start remaining nodes
+ansible pi-m3,dream-machine -i infrastructure/inventory/production/hosts.yaml \
+  -m systemd -a "name=k3s state=started" --become
+
+# 6. Verify cluster state
 kubectl get nodes -o wide
-
-# Describe problematic node
-kubectl describe node node-name
-
-# Check node logs
-journalctl -u k3s -f
-
-# Restart K3s service
-sudo systemctl restart k3s
+kubectl get pods -A
 ```
 
-#### Pod Issues
+**Application Recovery:**
 ```bash
-# Check pod status
-kubectl get pods -n namespace --show-labels
+# 1. Restore from Longhorn backup
+kubectl apply -f - <<EOF
+apiVersion: longhorn.io/v1beta1
+kind: Volume
+metadata:
+  name: restored-volume
+  namespace: longhorn-system
+spec:
+  fromBackup: "backup://backup-name"
+  numberOfReplicas: 3
+  size: "10Gi"
+EOF
 
-# Get pod details
-kubectl describe pod pod-name -n namespace
+# 2. Update application to use restored volume
+kubectl patch deployment <app-name> -n <namespace> \
+  -p '{"spec":{"template":{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"restored-pvc"}}]}}}}'
 
-# Check pod logs
-kubectl logs -f pod-name -n namespace
-
-# Debug with interactive shell
-kubectl exec -it pod-name -n namespace -- /bin/sh
+# 3. Verify application functionality
+kubectl get pods -n <namespace>
+kubectl logs -f deployment/<app-name> -n <namespace>
 ```
 
-#### Network Issues
+## 🔍 Monitoring and Alerting
+
+### Prometheus Queries for Operations
+
+**Critical Infrastructure Metrics:**
+```promql
+# Node CPU usage
+100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Node memory usage
+(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+
+# Pod restart rate
+increase(kube_pod_container_status_restarts_total[1h])
+
+# Persistent volume usage
+(kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) * 100
+
+# ArgoCD application health
+argocd_app_health_status{health_status!="Healthy"}
+```
+
+**Set up Alert Rules:**
+```yaml
+# prometheus-alerts.yaml
+groups:
+- name: infrastructure.rules
+  rules:
+  - alert: NodeDown
+    expr: up{job="node-exporter"} == 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Node {{ $labels.instance }} is down"
+      
+  - alert: HighCPUUsage
+    expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage on {{ $labels.instance }}"
+      
+  - alert: PodCrashLooping
+    expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Pod {{ $labels.pod }} is crash looping"
+```
+
+### Grafana Dashboard Management
+
+**Import Essential Dashboards:**
 ```bash
-# Check ingress status
-kubectl get ingress -A
+# Import community dashboards
+curl -s https://grafana.com/api/dashboards/1860/revisions/27/download | \
+  kubectl create configmap node-exporter-dashboard --from-file=dashboard.json=/dev/stdin -n monitoring
 
-# Verify LoadBalancer services
-kubectl get svc -A --field-selector spec.type=LoadBalancer
-
-# Test DNS resolution
-kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup kubernetes.default
-
-# Check MetalLB status
-kubectl get pods -n metallb-system
-kubectl logs -n metallb-system -l app=metallb
+# Create custom dashboard for K3s
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k3s-cluster-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  k3s-cluster.json: |
+    {
+      "dashboard": {
+        "title": "K3s Cluster Overview",
+        "panels": [
+          {
+            "title": "Node Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "kube_node_status_condition{condition=\"Ready\",status=\"true\"}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+EOF
 ```
 
-#### Storage Issues
+## 🔐 Security Operations
+
+### Certificate Management
+
+**Monitor Certificate Expiration:**
 ```bash
-# Check Longhorn system status
-kubectl get pods -n longhorn-system
+# Check all certificates
+kubectl get certificates -A -o custom-columns="NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[0].status,EXPIRY:.status.notAfter"
 
-# View volume status
-kubectl get pv,pvc -A
-
-# Check Longhorn UI for detailed storage info
-kubectl port-forward -n longhorn-system svc/longhorn-frontend 8080:80
+# Get certificates expiring in next 30 days
+kubectl get certificates -A -o json | \
+  jq -r '.items[] | select(.status.notAfter != null) | select(((.status.notAfter | fromdateiso8601) - now) < 2592000) | "\(.metadata.namespace)/\(.metadata.name) expires \(.status.notAfter)"'
 ```
 
-### Performance Troubleshooting
+**Rotate Certificates:**
+```bash
+# Force certificate renewal
+kubectl delete certificate <cert-name> -n <namespace>
 
-#### High CPU Usage
-1. **Identify source**: Use `kubectl top pods -A` and `kubectl top nodes`
-2. **Scale resources**: Increase pod CPU limits or scale horizontally
-3. **Optimize applications**: Review application performance and resource usage patterns
+# Check cert-manager logs
+kubectl logs -n cert-manager deployment/cert-manager
 
-#### Memory Issues
-1. **Check OOMKills**: `dmesg | grep -i "killed process"`
-2. **Analyze memory usage**: Use Grafana dashboards for detailed memory analysis
-3. **Adjust limits**: Increase memory limits or optimize application memory usage
-
-#### Disk Space Issues
-1. **Clean up logs**: `journalctl --vacuum-time=7d`
-2. **Remove unused images**: `sudo k3s crictl rmi --prune`
-3. **Expand volumes**: Follow storage scaling procedures above
-
-### Emergency Procedures
-
-#### Cluster Unresponsive
-1. **Check control plane**: `kubectl get nodes`
-2. **Restart K3s**: `sudo systemctl restart k3s`
-3. **Restore from backup**: Use etcd snapshot restoration if needed
-
-#### Application Down
-1. **Check pod status**: `kubectl get pods -n app-namespace`
-2. **Review logs**: `kubectl logs -f deployment/app-name -n app-namespace`
-3. **Restart deployment**: `kubectl rollout restart deployment/app-name -n app-namespace`
-
-#### Network Connectivity Lost
-1. **Check MetalLB**: `kubectl get pods -n metallb-system`
-2. **Verify ingress**: `kubectl get ingress -A`
-3. **Test internal connectivity**: Deploy debug pod and test connectivity
-
-## 🌍 Environment Management
-
-### Environment Overview
-
-| Environment | Purpose | Resources | Monitoring |
-|-------------|---------|-----------|------------|
-| **Development** | Feature development and testing | Minimal resources | Basic monitoring |
-| **Staging** | Pre-production validation | Production-like | Full monitoring |
-| **Production** | Live applications | High availability | Comprehensive monitoring |
-
-### Environment-Specific Operations
-
-#### Development Environment
-- **Purpose**: Fast iteration and testing
-- **Deployment**: Automatic via ArgoCD on push to develop branches
-- **Resources**: Shared node pool, lower resource limits
-- **Data**: Test data, frequent resets acceptable
-
-#### Staging Environment
-- **Purpose**: Production validation and integration testing
-- **Deployment**: Manual promotion from development
-- **Resources**: Production-equivalent sizing
-- **Data**: Production-like test data, stable
-
-#### Production Environment
-- **Purpose**: Live user-facing applications
-- **Deployment**: Controlled promotion after staging validation
-- **Resources**: High availability, dedicated resources
-- **Data**: Live data, comprehensive backup and monitoring
-
-### Environment Promotion Process
-
-```mermaid
-graph LR
-    DEV[Development] --> STAGING[Staging]
-    STAGING --> PROD[Production]
-    
-    DEV --> |Automated| DEV_DEPLOY[Auto Deploy]
-    STAGING --> |Manual Gate| STAGING_DEPLOY[Manual Deploy]
-    PROD --> |Approval Required| PROD_DEPLOY[Controlled Deploy]
+# Verify new certificate
+kubectl get certificate <cert-name> -n <namespace> -o yaml
 ```
 
-### Cross-Environment Consistency
+### Access Control Auditing
 
-#### Configuration Management
-- Use environment-specific value files in GitOps repository
-- Maintain consistent base configurations across environments
-- Document any environment-specific deviations
+**Review RBAC Permissions:**
+```bash
+# List all cluster roles
+kubectl get clusterroles
 
-#### Monitoring Consistency
-- Deploy same monitoring stack across all environments
-- Use environment labels for metric differentiation
-- Maintain consistent alerting rules with environment-appropriate thresholds
+# Check user permissions
+kubectl auth can-i --list --as=system:serviceaccount:<namespace>:<service-account>
 
-## 📱 Daily Operations Checklist
+# Audit recent authentication events
+kubectl get events --field-selector reason=FailedMount,reason=Unauthorized -A
+```
 
-### Morning Checks
-- [ ] Review overnight alerts and incidents
-- [ ] Check cluster health status in Grafana
-- [ ] Verify backup completion status
-- [ ] Review application performance metrics
-- [ ] Check for any failed deployments
+### Security Scanning
 
-### Weekly Maintenance
-- [ ] Review and clean up old container images
-- [ ] Verify backup restoration procedures
-- [ ] Update monitoring dashboards if needed
-- [ ] Review and update documentation
-- [ ] Plan for upcoming capacity needs
+**Scan for Vulnerabilities:**
+```bash
+# Install and run trivy
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
-### Monthly Tasks
-- [ ] Review security patches and updates
-- [ ] Analyze resource usage trends
-- [ ] Update disaster recovery documentation
-- [ ] Review and optimize monitoring alerts
-- [ ] Conduct backup restoration tests
+# Scan cluster for vulnerabilities
+trivy k8s --report summary cluster
+
+# Scan specific images
+trivy image nginx:latest
+```
+
+## 📋 Operational Checklists
+
+### Daily Checklist
+- [ ] Run cluster health check script
+- [ ] Review Grafana dashboards for anomalies
+- [ ] Check ArgoCD application sync status
+- [ ] Verify backup completion
+- [ ] Review recent alerts and events
+
+### Weekly Checklist
+- [ ] Update system packages on all nodes
+- [ ] Review certificate expiration dates
+- [ ] Clean up old logs and temporary files
+- [ ] Test backup restore procedure (dev environment)
+- [ ] Review resource utilization trends
+
+### Monthly Checklist
+- [ ] Update K3s version if available
+- [ ] Update Helm charts and container images
+- [ ] Review and update monitoring dashboards
+- [ ] Conduct disaster recovery drill
+- [ ] Review security scan results
+- [ ] Update documentation
+
+## 📞 Emergency Contacts
+
+**Escalation Matrix:**
+1. **Level 1**: Self-service using this guide
+2. **Level 2**: Homelab administrator (you!)
+3. **Level 3**: Community support (K3s Slack, forums)
+
+**Useful Resources:**
+- **K3s Documentation**: https://docs.k3s.io/
+- **ArgoCD Documentation**: https://argo-cd.readthedocs.io/
+- **Prometheus Documentation**: https://prometheus.io/docs/
+- **Longhorn Documentation**: https://longhorn.io/docs/
 
 ---
 
-*For emergency situations, refer to the [Emergency Runbooks](../runbooks/) for detailed step-by-step procedures.* 
+**Regular operations keep the cluster healthy and applications running smoothly. When in doubt, check the logs and follow the troubleshooting procedures.** 

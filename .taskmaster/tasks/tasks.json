@@ -594,7 +594,7 @@
         "description": "Simplify the environment structure by removing the staging environment and reconfiguring the dev environment for localhost-only use, while retaining the production configuration.",
         "details": "This task involves modifying the existing Ansible and GitOps configurations to reflect the simplified environment structure. Specific steps include:\n\n1.  **Ansible Inventory Update:**\n    *   Remove the `staging/` directory and all its contents from `infrastructure/inventory/`.\n    *   Review and update the `dev/` inventory (e.g., `infrastructure/inventory/dev/hosts.yml`) to explicitly target `localhost` or ensure it's configured for a single-node, local setup.\n    *   Verify the `production/` inventory remains unchanged.\n\n2.  **Ansible Playbook/Role Review:**\n    *   Review relevant playbooks and roles (especially those handling environment-specific logic or deployments) to ensure they correctly handle the absence of the staging environment.\n    *   Adjust any conditional logic (`when: environment == 'staging'`) or variable lookups that relied on the staging environment.\n    *   Ensure playbooks can still be executed successfully against both the simplified `dev` and the `production` inventories.\n\n3.  **GitOps Configuration Update:**\n    *   Navigate to the GitOps repository structure (assuming a structure like `gitops/environments/`).\n    *   Remove the directory and all contents related to the `staging` environment (e.g., `gitops/environments/staging/`).\n    *   Review and update the `dev` environment configurations (e.g., `gitops/environments/dev/`) to ensure they are suitable for a localhost-only deployment (e.g., potentially reducing replicas, removing external ingress if not needed locally, adjusting resource requests/limits).\n    *   Review ArgoCD Application or ApplicationSet definitions (e.g., in `gitops/argocd/`) and remove any that specifically targeted the staging environment.\n\n4.  **Documentation Update:**\n    *   Update any relevant documentation (READMEs, deployment guides) to reflect the removal of the staging environment and the nature of the dev environment.",
         "testStrategy": "1.  **Ansible Verification:**\n    *   Verify the `staging/` directory is removed from `infrastructure/inventory/`.\n    *   Verify the `dev/` inventory correctly targets localhost or a single node.\n    *   Run a simple Ansible playbook (e.g., one that gathers facts) against both the `dev` and `production` inventories to ensure they are valid and the playbooks execute without errors related to missing environments.\n2.  **GitOps Verification:**\n    *   Verify the `staging/` environment directory is removed from the GitOps repository.\n    *   Review key configuration files in the `dev/` GitOps directory to confirm they are appropriate for a localhost setup.\n    *   Review ArgoCD Application/ApplicationSet manifests to confirm staging references are removed.\n3.  **Simulated Deployment (Optional but Recommended):**\n    *   If possible, simulate syncing the GitOps repository with a test ArgoCD instance or perform a dry run to ensure applications for `dev` and `production` are correctly defined and staging applications are no longer present.",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           12,
           15,
@@ -602,11 +602,44 @@
         ],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 28,
+        "title": "Update All README Files - Comprehensive Documentation Overhaul",
+        "description": "Update all README.md files across the project to be professional, straight-to-point, and include practical examples and commands.",
+        "details": "Conduct a comprehensive review and update of all existing README.md files within the project repository. This includes, but is not limited to:\n\n1.  **Main Project README:** Provide a high-level overview, project goals, key technologies, setup prerequisites, and entry points for different areas (infrastructure, GitOps, applications).\n2.  **Infrastructure Documentation:** Update READMEs within the `infrastructure/` directory, covering the overall infrastructure structure, inventory setup, and how to run core playbooks.\n3.  **Role-Specific READMEs:** Ensure each significant Ansible role within `infrastructure/roles/` has a clear README explaining its purpose, variables, dependencies, and usage examples.\n4.  **GitOps Guides:** Update READMEs within the `gitops/` directory, explaining the GitOps workflow, directory structure, how to add new applications, manage environments, and use ArgoCD.\n5.  **Component-Specific READMEs:** Update documentation for deployed components like the Observability stack (Prometheus, Grafana, Loki), Ingress, MetalLB, etc., focusing on how to access/use them, key configuration points, and common commands (e.g., accessing UIs, checking logs).\n\nFor each README, focus on:\n*   **Clarity and Conciseness:** Remove jargon, get straight to the point.\n*   **Practical Examples:** Include copy-pasteable command examples for common tasks (e.g., running a playbook, syncing an ArgoCD app, checking a service status).\n*   **Structure:** Use headings, lists, and code blocks effectively.\n*   **Accuracy:** Ensure documentation reflects the current state of the project (e.g., environment structure from Task 27, GitOps structure from Task 16).\n*   **Consistency:** Maintain a consistent tone and formatting style across all READMEs.",
+        "testStrategy": "1.  Review each updated README.md file manually for clarity, conciseness, accuracy, and completeness based on the requirements.\n2.  Verify that all specified types of READMEs (main, infrastructure, roles, GitOps, components) have been updated.\n3.  Spot-check command examples and usage instructions provided in the READMEs by attempting to execute them in a test environment.\n4.  Ensure internal links between READMEs (if any) are correct.\n5.  Confirm that the documentation accurately reflects the current project structure and deployed components.",
+        "status": "in-progress",
+        "dependencies": [
+          8,
+          10,
+          12,
+          15,
+          16,
+          19,
+          25,
+          27
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 29,
+        "title": "Enhance Mermaid Graph Styling",
+        "description": "Improve the visual appearance and professionalism of Mermaid graphs used throughout the project documentation.",
+        "details": "Mermaid graphs currently render with default styling which may appear unprofessional. This task involves researching and implementing styling improvements for Mermaid diagrams. Steps include:\n\n1.  Identify all locations where Mermaid graphs are used (primarily README files updated in Task 28).\n2.  Research available Mermaid styling options, themes, or custom CSS approaches supported by the rendering environment (e.g., GitHub Markdown, specific documentation generators).\n3.  Select or create a styling approach that enhances readability and visual appeal.\n4.  Apply the chosen styling consistently to all identified Mermaid graphs.\n5.  Verify the changes in the rendered documentation.",
+        "testStrategy": "View the documentation files (e.g., READMEs) containing Mermaid graphs in the environment where they are typically consumed (e.g., GitHub repository view). Verify that the graphs render with the improved styling. Check multiple graphs to ensure consistency and confirm that the styling changes do not negatively impact readability or accuracy.",
+        "status": "pending",
+        "dependencies": [
+          28
+        ],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-06-17T20:14:18.518Z",
-      "updated": "2025-06-19T20:12:44.504Z",
+      "updated": "2025-06-19T20:34:11.641Z",
       "description": "Tasks for master context"
     }
   }

@@ -1,265 +1,523 @@
-# Architecture Overview
+# K3s Homelab Architecture
 
-This document provides a high-level overview of our K3s-based infrastructure architecture, combining Ansible for initial provisioning with GitOps (ArgoCD) for continuous deployment.
+**Comprehensive system design for production-ready Kubernetes homelab infrastructure.**
 
-## 🏗️ System Architecture
+## 🏗️ High-Level Architecture
 
 ```mermaid
 graph TB
-    subgraph "External"
-        DNS[External DNS]
-        LE[Let's Encrypt]
-        USERS[Users/Clients]
+    subgraph "External Access"
+        Users[👥 Users/Clients]
+        DNS[🌐 External DNS]
+        LE[🔒 Let's Encrypt]
     end
     
-    subgraph "K3s Cluster"
-        subgraph "Control Plane"
-            CP1[Control Node 1]
-            CP2[Control Node 2]
-            CP3[Control Node 3]
+    subgraph "K3s Cluster (7 Nodes)"
+        subgraph "Control Plane (HA)"
+            CP1[🖥️ dream-machine<br/>Control+Worker]
+            CP2[🥧 pi-m2<br/>Control Plane]
+            CP3[🥧 pi-m3<br/>Control Plane]
+            VIP[⚖️ HAProxy VIP<br/>192.168.1.10]
         end
         
         subgraph "Worker Nodes"
-            W1[Worker Node 1]
-            W2[Worker Node 2]
-            W3[Worker Node N]
+            W1[🥧 pi-n1<br/>Worker]
+            W2[🥧 pi-n2<br/>Worker]
+            W3[🥧 pi-n3<br/>Worker]
+            W4[🥧 pi-n4<br/>Worker]
         end
         
         subgraph "Ingress Layer"
-            MLB[MetalLB LoadBalancer]
-            NGINX[Ingress-NGINX Controller]
+            MLB[🔄 MetalLB<br/>10.0.0.30-50]
+            NGINX[🚪 Ingress-NGINX<br/>HTTP/HTTPS]
+        end
+        
+        subgraph "GitOps Layer"
+            ARGOCD[🔄 ArgoCD<br/>Continuous Deployment]
+            GIT[📂 Git Repository<br/>Source of Truth]
         end
         
         subgraph "Platform Services"
-            ARGO[ArgoCD]
-            CERT[Cert-Manager]
-            EDNS[ExternalDNS]
-            SS[Sealed Secrets]
+            CERT[🔐 cert-manager<br/>TLS Automation]
+            STORAGE[💾 Longhorn<br/>Distributed Storage]
+            SECRETS[🔑 Sealed Secrets<br/>GitOps-safe Secrets]
         end
         
         subgraph "Observability"
-            PROM[Prometheus]
-            GRAF[Grafana]
-            ALERT[AlertManager]
-            LOKI[Loki]
-        end
-        
-        subgraph "Storage"
-            LH[Longhorn]
-            ETCD[etcd]
+            PROM[📊 Prometheus<br/>Metrics Collection]
+            GRAF[📈 Grafana<br/>Visualization]
+            LOKI[📝 Loki<br/>Log Aggregation]
+            ALERT[🚨 AlertManager<br/>Alert Routing]
         end
         
         subgraph "Applications"
-            APP1[Application 1]
-            APP2[Application 2]
-            APPN[Application N]
+            APPS[🚀 User Applications<br/>Deployed via GitOps]
         end
     end
     
-    subgraph "GitOps Repository"
-        GIT[Git Repository]
-        INFRA[Infrastructure Configs]
-        APPS[Application Manifests]
-    end
-    
-    subgraph "CI/CD"
-        CI[GitHub Actions]
-        LINT[Linting & Validation]
-        TEST[Automated Testing]
-    end
-    
-    USERS --> NGINX
-    NGINX --> APP1
-    NGINX --> APP2
-    NGINX --> APPN
-    
-    MLB --> NGINX
-    CERT --> LE
-    EDNS --> DNS
-    
-    GIT --> ARGO
-    ARGO --> INFRA
-    ARGO --> APPS
-    
-    CI --> LINT
-    CI --> TEST
-    CI --> GIT
-    
-    PROM --> GRAF
-    PROM --> ALERT
-    
-    LH --> W1
-    LH --> W2
-    LH --> W3
+    Users --> NGINX
+    DNS --> MLB
+    LE --> CERT
+    NGINX --> APPS
+    ARGOCD --> APPS
+    GIT --> ARGOCD
+    CERT --> NGINX
+    VIP --> CP1
+    VIP --> CP2
+    VIP --> CP3
 ```
 
 ## 🎯 Design Principles
 
-### 1. **Infrastructure as Code**
-- All infrastructure is defined declaratively using Ansible playbooks
-- Configuration management through Git version control
-- Reproducible deployments across environments
+### High Availability
+- **3-node control plane** with HAProxy + keepalived VIP
+- **Distributed storage** with 3-replica redundancy
+- **Multi-zone deployment** across different Pi models
+- **Automated failover** for all critical components
 
-### 2. **GitOps Workflow**
-- ArgoCD manages application lifecycle from Git repository
-- Declarative application configuration using Helm charts and Kubernetes manifests
-- Continuous deployment with automatic synchronization
+### GitOps-First
+- **Declarative configuration** stored in Git
+- **Automated deployment** via ArgoCD
+- **Environment separation** (dev/production)
+- **Drift detection** and automatic remediation
 
-### 3. **High Availability**
-- Multi-node control plane for K3s cluster resilience
-- Distributed storage with Longhorn for data persistence
-- Load balancing with MetalLB for service availability
+### Security by Design
+- **TLS everywhere** with automatic certificate management
+- **Network segmentation** via policies
+- **RBAC enforcement** across all components
+- **Sealed secrets** for GitOps-safe secret management
 
-### 4. **Security First**
-- Automated TLS certificate management with Cert-Manager
-- Encrypted secrets management using Sealed Secrets
-- Network policies and RBAC for access control
+### Observability
+- **Comprehensive metrics** collection with Prometheus
+- **Centralized logging** via Loki
+- **Rich dashboards** in Grafana
+- **Proactive alerting** with AlertManager
 
-### 5. **Observability**
-- Comprehensive monitoring with Prometheus and Grafana
-- Centralized logging with Loki
-- Alerting and notification systems
+## 🏛️ Infrastructure Components
 
-## 🔧 Core Components
+### Node Architecture
 
-### K3s Cluster Foundation
-- **Distribution**: Lightweight Kubernetes (K3s) for efficient resource usage
-- **Networking**: Flannel CNI for pod-to-pod communication
-- **Storage**: Longhorn for distributed persistent storage
-- **Load Balancing**: MetalLB for bare-metal LoadBalancer services
+| Node | Role | Specs | Services |
+|------|------|-------|----------|
+| **dream-machine** | Control+Worker | x86_64, 32GB RAM | K3s Control, Workloads |
+| **pi-m2** | Control Plane | ARM64, 8GB RAM | K3s Control, etcd |
+| **pi-m3** | Control Plane | ARM64, 8GB RAM | K3s Control, etcd |
+| **pi-n1** | Worker | ARM64, 8GB RAM | Workloads, Storage |
+| **pi-n2** | Worker | ARM64, 8GB RAM | Workloads, Storage |
+| **pi-n3** | Worker | ARM64, 8GB RAM | Workloads, Storage |
+| **pi-n4** | Worker | ARM64, 8GB RAM | Workloads, Storage |
 
-### Platform Services
-- **ArgoCD**: GitOps continuous delivery for applications and infrastructure
-- **Ingress-NGINX**: HTTP/HTTPS ingress controller for external access
-- **Cert-Manager**: Automated TLS certificate provisioning from Let's Encrypt
-- **ExternalDNS**: Automatic DNS record management
-- **Sealed Secrets**: Encrypted secrets management in Git
+### Network Architecture
 
-### Observability Stack
-- **Prometheus**: Metrics collection and storage
-- **Grafana**: Visualization and dashboards
-- **AlertManager**: Alert routing and notification
-- **Loki**: Log aggregation and querying
-
-## 🌐 Network Architecture
-
-### Ingress Flow
 ```mermaid
-sequenceDiagram
-    participant Client
-    participant DNS
-    participant MetalLB
-    participant NGINX
-    participant App
+graph LR
+    subgraph "External Network"
+        Internet[🌐 Internet]
+        Router[🔌 Router<br/>192.168.1.1]
+    end
     
-    Client->>DNS: Resolve domain
-    DNS->>Client: Return LoadBalancer IP
-    Client->>MetalLB: HTTPS Request
-    MetalLB->>NGINX: Forward to Ingress Controller
-    NGINX->>App: Route to Application Pod
-    App->>NGINX: Response
-    NGINX->>MetalLB: Return Response
-    MetalLB->>Client: HTTPS Response
+    subgraph "Cluster Network"
+        VIP[⚖️ VIP<br/>192.168.1.10]
+        LB_Pool[🔄 LoadBalancer Pool<br/>10.0.0.30-50]
+        
+        subgraph "Node Network"
+            DM[dream-machine<br/>192.168.1.100]
+            M2[pi-m2<br/>192.168.1.102]
+            M3[pi-m3<br/>192.168.1.103]
+            N1[pi-n1<br/>192.168.1.101]
+            N2[pi-n2<br/>192.168.1.104]
+            N3[pi-n3<br/>192.168.1.105]
+            N4[pi-n4<br/>192.168.1.106]
+        end
+        
+        subgraph "Pod Network"
+            PodCIDR[Pod CIDR<br/>10.42.0.0/16]
+            SvcCIDR[Service CIDR<br/>10.43.0.0/16]
+        end
+    end
+    
+    Internet --> Router
+    Router --> VIP
+    Router --> LB_Pool
+    VIP --> DM
+    VIP --> M2
+    VIP --> M3
 ```
 
-### DNS & Certificate Management
-- **ExternalDNS** automatically creates DNS records for ingress resources
-- **Cert-Manager** provisions and renews TLS certificates from Let's Encrypt
-- **Wildcard certificates** reduce certificate management overhead
+## 🔧 Core Platform Services
 
-## 💾 Storage Architecture
+### Load Balancing & Ingress
 
-### Longhorn Distributed Storage
-- **Replicated Storage**: Data replicated across multiple nodes
-- **Backup Strategy**: Automated backups to external storage
-- **Volume Management**: Dynamic provisioning of persistent volumes
-- **Disaster Recovery**: Cross-cluster backup and restore capabilities
+**MetalLB Configuration:**
+```yaml
+# MetalLB IP Pool
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: production-pool
+spec:
+  addresses:
+  - 10.0.0.30-10.0.0.50
+```
 
-## 🔄 Deployment Pipeline
+**Ingress-NGINX Features:**
+- Layer 7 load balancing
+- SSL termination
+- WAF capabilities
+- Rate limiting
+- Request routing
 
-### Infrastructure (Ansible)
-1. **Node Preparation**: Base OS configuration and hardening
-2. **K3s Installation**: Cluster bootstrap and node joining
-3. **Platform Setup**: Core services and add-ons deployment
+### Storage Architecture
 
-### Applications (GitOps)
-1. **Git Commit**: Developer pushes changes to Git repository
-2. **CI Pipeline**: Automated validation and testing
-3. **ArgoCD Sync**: Automatic deployment to target environment
-4. **Health Checks**: Verify application deployment success
+**Longhorn Distributed Storage:**
+```yaml
+# Storage Class Configuration
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn
+provisioner: driver.longhorn.io
+parameters:
+  numberOfReplicas: "3"
+  staleReplicaTimeout: "30"
+  fromBackup: ""
+```
+
+**Storage Features:**
+- **3-replica redundancy** across worker nodes
+- **Automatic backup** to S3-compatible storage
+- **Snapshot management** for point-in-time recovery
+- **Volume expansion** without downtime
+- **Cross-node replication** for high availability
+
+### GitOps Platform
+
+**ArgoCD Configuration:**
+```yaml
+# Application Set for Infrastructure
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-core
+spec:
+  generators:
+  - list:
+      elements:
+      - cluster: k3s-production
+        environment: production
+        values_file: gitops/environments/production/values.yaml
+```
+
+**GitOps Features:**
+- **Multi-environment support** (dev/production)
+- **Automated sync** with drift detection
+- **Progressive rollouts** with health checks
+- **Rollback capabilities** on failure
+- **RBAC integration** for secure access
 
 ## 🔐 Security Architecture
 
-### Access Control
-- **RBAC**: Role-based access control for users and services
-- **Service Accounts**: Dedicated accounts for applications and services
-- **Network Policies**: Micro-segmentation for pod communication
+### Certificate Management
 
-### Secrets Management
-- **Sealed Secrets**: Encrypted secrets stored in Git
-- **Secret Encryption**: Kubernetes secrets encrypted at rest
-- **Certificate Rotation**: Automated TLS certificate renewal
+**cert-manager Integration:**
+```yaml
+# Let's Encrypt ClusterIssuer
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-production
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@cluster.local
+    privateKeySecretRef:
+      name: letsencrypt-production
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+```
 
-## 📊 Monitoring & Observability
+### Secret Management
 
-### Metrics Collection
-- **Node Metrics**: CPU, memory, disk, and network utilization
-- **Application Metrics**: Custom application metrics via Prometheus
-- **Cluster Metrics**: Kubernetes API server and cluster component metrics
+**Sealed Secrets Workflow:**
+```bash
+# Create sealed secret
+kubectl create secret generic my-secret \
+  --from-literal=password=supersecret \
+  --dry-run=client -o yaml | \
+kubeseal -o yaml > my-sealed-secret.yaml
 
-### Logging Strategy
-- **Centralized Logging**: All logs aggregated in Loki
-- **Structured Logging**: JSON-formatted logs for better parsing
-- **Log Retention**: Configurable retention policies
+# Commit to Git (safe)
+git add my-sealed-secret.yaml
+git commit -m "Add application secret"
+```
 
-### Alerting
-- **Threshold Alerts**: CPU, memory, and disk usage alerts
-- **Application Alerts**: Custom application health checks
-- **Infrastructure Alerts**: Cluster component health monitoring
+### Network Security
 
-## 🚀 Scalability Considerations
+**Network Policies:**
+```yaml
+# Default deny-all policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+```
+
+## 📊 Observability Stack
+
+### Monitoring Architecture
+
+```mermaid
+graph TB
+    subgraph "Data Sources"
+        Nodes[📊 Node Metrics]
+        Pods[🚀 Pod Metrics]
+        Apps[📱 Application Metrics]
+        Logs[📝 Application Logs]
+    end
+    
+    subgraph "Collection Layer"
+        NodeExp[node-exporter]
+        PodMon[Pod Monitoring]
+        Promtail[Promtail]
+    end
+    
+    subgraph "Storage Layer"
+        Prometheus[📊 Prometheus<br/>Metrics Store]
+        Loki[📝 Loki<br/>Log Store]
+    end
+    
+    subgraph "Visualization"
+        Grafana[📈 Grafana<br/>Dashboards]
+        AlertMgr[🚨 AlertManager<br/>Notifications]
+    end
+    
+    Nodes --> NodeExp
+    Pods --> PodMon
+    Apps --> PodMon
+    Logs --> Promtail
+    
+    NodeExp --> Prometheus
+    PodMon --> Prometheus
+    Promtail --> Loki
+    
+    Prometheus --> Grafana
+    Prometheus --> AlertMgr
+    Loki --> Grafana
+```
+
+### Key Metrics & Dashboards
+
+**Infrastructure Metrics:**
+- Node CPU, memory, disk utilization
+- Network throughput and latency
+- Storage performance and capacity
+- Container resource consumption
+
+**Application Metrics:**
+- Request rate, latency, error rate (RED)
+- Utilization, saturation, errors (USE)
+- Business-specific KPIs
+- Custom application metrics
+
+**Sample Grafana Dashboard Query:**
+```promql
+# CPU utilization by node
+100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Pod memory usage
+container_memory_usage_bytes{container!="POD",container!=""}
+
+# Ingress request rate
+rate(nginx_ingress_controller_requests_total[5m])
+```
+
+## 🌍 Environment Configurations
+
+### Development Environment
+
+**Purpose:** Single-node development and testing
+```yaml
+# Dev environment characteristics
+global:
+  environment: dev
+  domain: "dev.localhost"
+  cluster_name: "k3s-dev-local"
+
+# Minimal resource allocation
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Simplified services
+services:
+  metallb: false      # Use NodePort
+  longhorn: false     # Use local storage
+  argocd: false       # Manual deployment
+```
+
+### Production Environment
+
+**Purpose:** Full production workloads
+```yaml
+# Production environment characteristics
+global:
+  environment: production
+  domain: "cluster.local"
+  cluster_name: "k3s-production"
+
+# Full resource allocation
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+# Complete service stack
+services:
+  metallb: true       # LoadBalancer services
+  longhorn: true      # Distributed storage
+  argocd: true        # Full GitOps
+  monitoring: true    # Complete observability
+```
+
+## 🔄 Data Flow Architecture
+
+### Application Deployment Flow
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant Git as Git Repository
+    participant ArgoCD as ArgoCD
+    participant K8s as Kubernetes
+    participant Apps as Applications
+    
+    Dev->>Git: 1. Push application manifest
+    Git->>ArgoCD: 2. Webhook triggers sync
+    ArgoCD->>Git: 3. Pull latest manifests
+    ArgoCD->>K8s: 4. Apply manifests
+    K8s->>Apps: 5. Deploy/update applications
+    ArgoCD->>Dev: 6. Sync status notification
+```
+
+### Monitoring Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Apps as Applications
+    participant Prometheus as Prometheus
+    participant Grafana as Grafana
+    participant AlertMgr as AlertManager
+    participant Ops as Operations Team
+    
+    Apps->>Prometheus: 1. Expose metrics
+    Prometheus->>Prometheus: 2. Scrape & store metrics
+    Grafana->>Prometheus: 3. Query metrics
+    Prometheus->>AlertMgr: 4. Trigger alerts
+    AlertMgr->>Ops: 5. Send notifications
+```
+
+## 🚀 Scaling Considerations
 
 ### Horizontal Scaling
-- **Node Addition**: Automated node joining with Ansible
-- **Application Scaling**: HPA (Horizontal Pod Autoscaler) for applications
-- **Load Distribution**: MetalLB manages traffic distribution
+
+**Node Addition:**
+```bash
+# Add new worker node
+ansible-playbook -i inventory/production/hosts.yaml \
+  playbooks/add-node.yaml \
+  --extra-vars "target_node=pi-n5"
+```
+
+**Application Scaling:**
+```yaml
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
 
 ### Vertical Scaling
-- **Resource Limits**: Configured resource requests and limits
-- **VPA Integration**: Vertical Pod Autoscaler for resource optimization
-- **Storage Scaling**: Longhorn volume expansion capabilities
 
-## 🔧 Technology Stack
+**Resource Adjustment:**
+```yaml
+# Vertical Pod Autoscaler
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: my-app-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  updatePolicy:
+    updateMode: "Auto"
+```
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| **Container Runtime** | containerd | Container execution |
-| **Orchestration** | K3s (Kubernetes) | Container orchestration |
-| **Networking** | Flannel CNI | Pod networking |
-| **Load Balancing** | MetalLB | LoadBalancer services |
-| **Ingress** | Ingress-NGINX | HTTP/HTTPS ingress |
-| **Storage** | Longhorn | Distributed storage |
-| **GitOps** | ArgoCD | Continuous deployment |
-| **Certificates** | Cert-Manager | TLS automation |
-| **DNS** | ExternalDNS | DNS automation |
-| **Secrets** | Sealed Secrets | Encrypted secrets |
-| **Monitoring** | Prometheus | Metrics collection |
-| **Visualization** | Grafana | Dashboards |
-| **Logging** | Loki | Log aggregation |
-| **Configuration** | Ansible | Infrastructure automation |
+## 🔧 Troubleshooting Architecture
 
-## 📈 Environment Strategy
+### Health Check Commands
 
-### Multi-Environment Support
-- **Development**: Lightweight setup for development and testing
-- **Staging**: Production-like environment for validation
-- **Production**: High-availability setup with full monitoring
+```bash
+# Cluster health
+kubectl get nodes -o wide
+kubectl get pods -A | grep -v Running
 
-### Environment Promotion
-- **GitOps Flow**: Changes promoted through Git branches
-- **Automated Testing**: CI/CD validates changes before promotion
-- **Rollback Strategy**: Quick rollback using Git revert
+# Component status
+kubectl get applications -n argocd
+kubectl get certificates -A
+kubectl get volumes -n longhorn-system
+
+# Network connectivity
+kubectl get svc -A --field-selector=spec.type=LoadBalancer
+kubectl get ingress -A
+```
+
+### Common Architecture Issues
+
+| Issue | Symptoms | Resolution |
+|-------|----------|------------|
+| **Split-brain** | Multiple masters active | Check HAProxy/keepalived config |
+| **Storage failure** | PVCs stuck pending | Verify Longhorn node health |
+| **Certificate issues** | TLS errors | Check cert-manager logs |
+| **GitOps drift** | Applications OutOfSync | Force ArgoCD resync |
+
+## 📚 Related Documentation
+
+- **[Operations Guide](../operations/README.md)** - Day-to-day operational procedures
+- **[Development Workflow](../development/README.md)** - Application deployment via GitOps
+- **[Security Policies](../security/README.md)** - Security configurations and best practices
+- **[Runbooks](../runbooks/README.md)** - Step-by-step operational procedures
 
 ---
 
-*This architecture is designed to be scalable, maintainable, and secure while following cloud-native best practices.* 
+**This architecture provides a solid foundation for production Kubernetes workloads with enterprise-grade features in a homelab environment.** 
