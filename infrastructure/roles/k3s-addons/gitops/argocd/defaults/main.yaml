@@ -1,0 +1,242 @@
+---
+# ArgoCD v2.11 Role - Default Variables
+
+# Chart and version configuration
+argocd_chart_version: "7.4.1"       # Helm chart version for ArgoCD v2.11
+argocd_version: "v2.11.0"           # ArgoCD application version
+
+# Domain and ingress configuration
+argocd_domain: "argocd.local"       # Domain for ArgoCD UI (override externally)
+create_ingress: true                # Set to false to disable ingress creation
+cert_issuer: "letsencrypt-staging"  # cert-manager ClusterIssuer to use
+
+# Authentication configuration
+argocd_admin_password: "admin123!"  # Default admin password (change externally)
+argocd_oidc_enabled: false          # Enable Keycloak OIDC SSO integration
+
+# OIDC configuration (required if argocd_oidc_enabled: true)
+# keycloak_argocd_client_secret: ""        # Required - Keycloak client secret
+# keycloak_realm_url: ""                   # Required - Keycloak realm URL
+# keycloak_client_id: "argocd"             # Keycloak client ID
+
+# Feature flags
+argocd_image_updater_enabled: true  # Enable ArgoCD Image Updater
+create_sample_app: false            # Set to true to create example GitOps app
+sample_app_repo: "https://github.com/argoproj/argocd-example-apps.git"
+
+# ArgoCD Helm values configuration
+argocd_values:
+  global:
+    image:
+      tag: "{{ argocd_version }}"
+
+  # ArgoCD Server configuration
+  server:
+    image:
+      tag: "{{ argocd_version }}"
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # Metrics and monitoring
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus
+
+    # Service configuration
+    service:
+      type: ClusterIP
+
+    # Ingress disabled (managed separately for better control)
+    ingress:
+      enabled: false
+
+    # Server configuration
+    config:
+      url: "https://{{ argocd_domain }}"
+
+    # OIDC configuration (conditional)
+    extraArgs:
+      - --insecure  # Required for ingress TLS termination
+
+  # Application Controller configuration
+  controller:
+    image:
+      tag: "{{ argocd_version }}"
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    # Metrics
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus
+
+  # Repository Server configuration
+  repoServer:
+    image:
+      tag: "{{ argocd_version }}"
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # Metrics
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus
+
+  # ApplicationSet Controller
+  applicationSet:
+    enabled: true
+    image:
+      tag: "{{ argocd_version }}"
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # Metrics
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus
+
+  # Dex (disabled - using external OIDC if needed)
+  dex:
+    enabled: false
+
+  # Redis for caching
+  redis:
+    enabled: true
+    image:
+      tag: "7.0.11-alpine"
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+    # Metrics
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus
+
+  # Notifications controller
+  notifications:
+    enabled: true
+    image:
+      tag: "{{ argocd_version }}"
+
+    # Resource configuration
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # Metrics
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus
+
+# ArgoCD Image Updater configuration (when enabled)
+argocd_image_updater_values:
+  image:
+    tag: "v0.12.2"
+
+  # Resource configuration
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  # Configuration
+  config:
+    # Registry configurations
+    registries:
+      - name: docker.io
+        api_url: https://registry-1.docker.io
+        ping: yes
+        prefix: docker.io
+        default: yes
+
+    # Git configuration
+    git:
+      user: "argocd-image-updater"
+      email: "argocd-image-updater@noreply.local"
+
+    # Log level
+    logLevel: info
+
+  # Metrics
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus
+
+# OIDC configuration template (applied when argocd_oidc_enabled: true)
+argocd_oidc_config:
+  name: "Keycloak"
+  issuer: "{{ keycloak_realm_url | default('https://keycloak.local/realms/master') }}"
+  clientId: "{{ keycloak_client_id | default('argocd') }}"
+  clientSecret: "$argocd-oidc-secret:clientSecret"
+  requestedScopes:
+    - openid
+    - profile
+    - email
+    - groups
+  requestedIDTokenClaims:
+    groups:
+      essential: true
+  groupsClaim: groups

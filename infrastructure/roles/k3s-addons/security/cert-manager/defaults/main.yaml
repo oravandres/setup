@@ -1,0 +1,58 @@
+---
+# cert-manager v1.15 Role - Default Variables
+
+# Chart configuration
+cert_manager_chart_version: "v1.15.0"
+
+# cert-manager Helm values
+cert_manager_values:
+  installCRDs: true
+  webhook:
+    hostNetwork: false
+    securePort: 10250
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  cainjector:
+    enabled: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  startupapicheck:
+    enabled: true
+  prometheus:
+    enabled: true
+    servicemonitor:
+      enabled: true
+      prometheusInstance: kube-prometheus
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Cloudflare configuration (must be provided externally)
+# cloudflare_api_token: ""  # Required - set via environment or vault
+
+# Let's Encrypt configuration (must be provided externally)
+# letsencrypt_email: ""     # Required - set externally
+# dns_zones: []             # Required - set externally
+
+# Certificate configuration
+cert_issuer: "letsencrypt-staging"  # Use "letsencrypt-production" for prod
+create_wildcard_cert: false         # Set to true to create wildcard cert
+wildcard_cert_namespace: "default"  # Namespace for wildcard cert
+organization_name: "HomeCluster"    # Organization name for certificates
+
+# Domain configuration (must be provided externally)
+# base_domain: ""           # Required if creating wildcard certs

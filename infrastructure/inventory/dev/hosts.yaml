@@ -1,0 +1,34 @@
+---
+# Development Environment Inventory - Localhost Only
+# Single-node development setup for local testing and development
+
+all:
+  children:
+    k3s_dev_local:
+      children:
+        dev_control_plane:
+          hosts:
+            localhost:
+              ansible_host: 127.0.0.1
+              ansible_connection: local
+              ansible_user: "{{ lookup('env', 'USER') }}"
+              node_architecture: amd64
+              node_type: single_node_dev
+              # Development-specific labels
+              node_labels:
+                - "node-role.kubernetes.io/control-plane=true"
+                - "node-role.kubernetes.io/worker=true"
+                - "kubernetes.io/arch=amd64"
+                - "environment=dev"
+                - "nodepool=localhost"
+              # Development resource limits
+              dev_settings:
+                minimal_resources: true
+                debug_mode: true
+                local_storage_only: true
+                skip_backup: true
+
+    # Development-specific logical grouping
+    dev_localhost:
+      hosts:
+        localhost:

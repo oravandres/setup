@@ -1,0 +1,155 @@
+# Production Environment Configuration
+---
+global:
+  environment: production
+  domain: "cluster.local"
+  cluster_name: "k3s-production"
+
+# ArgoCD Configuration
+argocd:
+  enabled: true
+  domain: "argocd.cluster.local"
+  admin_password: "{{ .Values.secrets.argocd_admin_password }}"  # From sealed secret
+  cert_issuer: "letsencrypt-production"
+  oidc_enabled: true
+  keycloak_realm_url: "https://auth.cluster.local/realms/homelab"
+  keycloak_client_id: "argocd"
+  resources:
+    server:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    controller:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+# cert-manager Configuration
+cert_manager:
+  enabled: true
+  cert_issuer: "letsencrypt-production"
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  create_wildcard_cert: true
+  wildcard_domains:
+    - "*.cluster.local"
+
+# MetalLB Configuration
+metallb:
+  enabled: true
+  ip_pool:
+    addresses:
+      - "10.0.0.30-10.0.0.50"  # Production range - full pool as per requirements
+  resources:
+    controller:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+      limits:
+        cpu: 200m
+        memory: 200Mi
+    speaker:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+      limits:
+        cpu: 200m
+        memory: 200Mi
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  prometheus:
+    retention: "30d"  # Full retention for production
+    storage_size: "50Gi"
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+  grafana:
+    enabled: true
+    admin_password: "{{ .Values.secrets.grafana_admin_password }}"
+    oauth_enabled: true
+  alertmanager:
+    enabled: true
+    smtp_enabled: true
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  class: "nginx"
+  tls_enabled: true
+  default_cert: "wildcard-tls"
+
+# Storage Configuration
+storage:
+  longhorn:
+    enabled: true
+    replicas: 3  # Full HA replicas
+    backup_target: "s3://longhorn-backups/"
+  backup:
+    enabled: true
+    schedule: "0 1 * * *"  # Daily backups at 1 AM
+    retention: "30d"
+
+# Security Configuration
+security:
+  networkpolicies: true
+  podsecuritypolicies: true
+  falco:
+    enabled: true
+
+# Sealed Secrets Configuration
+sealed_secrets:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  metrics:
+    enabled: true
+  log_level: "info"
+  key_renewal_period: "30d"  # Production key rotation
+  monitoring:
+    enabled: true
+    service_monitor:
+      enabled: true
+
+# High Availability Configuration
+ha:
+  etcd_backup:
+    enabled: true
+    schedule: "0 */6 * * *"  # Every 6 hours
+    retention: "7d"
+  chaos_testing:
+    enabled: true
+    schedule: "0 10 * * 1"  # Monday mornings
+
+# External Dependencies
+external:
+  dns:
+    provider: "cloudflare"
+    zones:
+      - "cluster.local"
+  secrets:
+    backend: "vault"  # External secrets operator with Vault
+  backup:
+    provider: "s3"
+    bucket: "homelab-backups"

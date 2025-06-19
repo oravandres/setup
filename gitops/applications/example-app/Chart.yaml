@@ -1,0 +1,19 @@
+apiVersion: v2
+name: example-app
+description: Example application for demonstrating GitOps workflow
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+maintainers:
+  - name: homelab-admin
+    email: admin@cluster.local
+
+keywords:
+  - example
+  - demo
+  - gitops
+
+home: https://github.com/your-org/k3s-homelab-setup
+sources:
+  - https://github.com/your-org/k3s-homelab-setup

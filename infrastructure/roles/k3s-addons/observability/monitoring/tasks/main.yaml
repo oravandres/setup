@@ -1,0 +1,332 @@
+---
+# Monitoring Stack Role - Main Tasks (Prometheus, Grafana, AlertManager)
+- name: Display monitoring stack configuration
+  debug:
+    msg:
+      - "=== Monitoring Stack Configuration ==="
+      - "kube-prometheus-stack: {{ kube_prometheus_chart_version | default('61.1.1') }}"
+      - "Prometheus: {{ prometheus_version | default('v2.53.0') }}"
+      - "Grafana: {{ grafana_version | default('11.1.0') }}"
+      - "Storage: {{ monitoring_storage_enabled | default(true) }}"
+      - "Retention: {{ prometheus_retention | default('30d') }}"
+      - "Storage Size: {{ prometheus_storage_size | default('50Gi') }}"
+  run_once: true
+
+- name: Add Prometheus community Helm repository
+  kubernetes.core.helm_repository:
+    name: prometheus-community
+    repo_url: https://prometheus-community.github.io/helm-charts
+    state: present
+
+- name: Update Helm repositories
+  kubernetes.core.helm:
+    name: dummy
+    chart_ref: dummy
+    release_namespace: dummy
+    state: absent
+    update_repo_cache: yes
+
+- name: Create monitoring namespace
+  kubernetes.core.k8s:
+    name: monitoring
+    api_version: v1
+    kind: Namespace
+    state: present
+    definition:
+      metadata:
+        labels:
+          name: monitoring
+          monitoring.coreos.com/scrape: "true"
+
+- name: Create Grafana admin password secret
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: grafana-admin-secret
+        namespace: monitoring
+      type: Opaque
+      stringData:
+        admin-user: "{{ grafana_admin_user | default('admin') }}"
+        admin-password: "{{ grafana_admin_password | default('admin123!') }}"
+    state: present
+
+- name: Install kube-prometheus-stack via Helm
+  kubernetes.core.helm:
+    name: kube-prometheus-stack
+    chart_ref: prometheus-community/kube-prometheus-stack
+    release_namespace: monitoring
+    chart_version: "{{ kube_prometheus_chart_version | default('61.1.1') }}"
+    values: "{{ kube_prometheus_values }}"
+    create_namespace: true
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 900s
+
+- name: Create Grafana ingress (if enabled)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: grafana-ingress
+        namespace: monitoring
+        annotations:
+          nginx.ingress.kubernetes.io/rewrite-target: /
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+          cert-manager.io/cluster-issuer: "{{ grafana_cert_issuer | default('letsencrypt-staging') }}"
+      spec:
+        ingressClassName: nginx
+        tls:
+          - hosts:
+              - "{{ grafana_domain | default('grafana.local') }}"
+            secretName: grafana-tls
+        rules:
+          - host: "{{ grafana_domain | default('grafana.local') }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: kube-prometheus-stack-grafana
+                      port:
+                        number: 80
+    state: "{{ 'present' if create_grafana_ingress | default(true) else 'absent' }}"
+
+- name: Create Prometheus ingress (if enabled)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: prometheus-ingress
+        namespace: monitoring
+        annotations:
+          nginx.ingress.kubernetes.io/rewrite-target: /
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+          cert-manager.io/cluster-issuer: "{{ prometheus_cert_issuer | default('letsencrypt-staging') }}"
+      spec:
+        ingressClassName: nginx
+        tls:
+          - hosts:
+              - "{{ prometheus_domain | default('prometheus.local') }}"
+            secretName: prometheus-tls
+        rules:
+          - host: "{{ prometheus_domain | default('prometheus.local') }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: kube-prometheus-stack-prometheus
+                      port:
+                        number: 9090
+    state: "{{ 'present' if create_prometheus_ingress | default(true) else 'absent' }}"
+
+- name: Create AlertManager ingress (if enabled)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: alertmanager-ingress
+        namespace: monitoring
+        annotations:
+          nginx.ingress.kubernetes.io/rewrite-target: /
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+          cert-manager.io/cluster-issuer: "{{ alertmanager_cert_issuer | default('letsencrypt-staging') }}"
+      spec:
+        ingressClassName: nginx
+        tls:
+          - hosts:
+              - "{{ alertmanager_domain | default('alertmanager.local') }}"
+            secretName: alertmanager-tls
+        rules:
+          - host: "{{ alertmanager_domain | default('alertmanager.local') }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: kube-prometheus-stack-alertmanager
+                      port:
+                        number: 9093
+    state: "{{ 'present' if create_alertmanager_ingress | default(true) else 'absent' }}"
+
+- name: Create custom ServiceMonitor for ArgoCD (if ArgoCD is deployed)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: argocd-metrics
+        namespace: monitoring
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: argocd-metrics
+        namespaceSelector:
+          matchNames:
+            - argocd
+        endpoints:
+          - port: metrics
+            interval: 30s
+            path: /metrics
+          - port: repo-server-metrics
+            interval: 30s
+            path: /metrics
+    state: "{{ 'present' if enable_argocd_monitoring | default(false) else 'absent' }}"
+
+- name: Create custom ServiceMonitor for Longhorn (if Longhorn is deployed)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: longhorn-prometheus-servicemonitor
+        namespace: monitoring
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        selector:
+          matchLabels:
+            app: longhorn-manager
+        namespaceSelector:
+          matchNames:
+            - longhorn-system
+        endpoints:
+          - port: manager
+            interval: 30s
+            path: /metrics
+    state: "{{ 'present' if enable_longhorn_monitoring | default(true) else 'absent' }}"
+
+- name: Create additional PrometheusRules for K3s-specific alerts
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: k3s-cluster-alerts
+        namespace: monitoring
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        groups:
+          - name: k3s.rules
+            rules:
+              - alert: K3sNodeDown
+                expr: up{job="node-exporter"} == 0
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "K3s node {{ $labels.instance }} is down"
+                  description: "K3s node {{ $labels.instance }} has been down for more than 5 minutes."
+
+              - alert: K3sHighCPUUsage
+                expr: (100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 80
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High CPU usage on {{ $labels.instance }}"
+                  description: "CPU usage is above 80% on {{ $labels.instance }} for more than 10 minutes."
+
+              - alert: K3sHighMemoryUsage
+                expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High memory usage on {{ $labels.instance }}"
+                  description: "Memory usage is above 85% on {{ $labels.instance }} for more than 10 minutes."
+
+              - alert: K3sDiskSpaceRunningLow
+                expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Disk space running low on {{ $labels.instance }}"
+                  description: "Disk space is below 20% on {{ $labels.instance }}."
+
+              - alert: K3sPodCrashLooping
+                expr: increase(kube_pod_container_status_restarts_total[30m]) > 0
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+                  description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in the last 30 minutes."
+
+              - alert: K3sPersistentVolumeUsageHigh
+                expr: (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) * 100 > 80
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "PersistentVolume {{ $labels.persistentvolumeclaim }} usage high"
+                  description: "PersistentVolume {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is {{ $value }}% full."
+    state: present
+
+- name: Deploy monitoring validation script
+  template:
+    src: validate-monitoring.sh.j2
+    dest: /usr/local/bin/validate-monitoring
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Run monitoring validation
+  command: /usr/local/bin/validate-monitoring
+  register: monitoring_validation
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Display monitoring validation results
+  debug:
+    var: monitoring_validation.stdout_lines
+  run_once: true
+
+- name: Display monitoring stack deployment summary
+  debug:
+    msg:
+      - "=== Monitoring Stack Deployment Complete ==="
+      - "✅ Prometheus Server deployed and collecting metrics"
+      - "✅ Grafana deployed with pre-configured dashboards"
+      - "✅ AlertManager configured for alerting"
+      - "✅ ServiceMonitors configured for cluster components"
+      - "✅ Custom PrometheusRules for K3s-specific alerts"
+      - ""
+      - "Access URLs (configure DNS or edit /etc/hosts):"
+      - "Grafana: https://{{ grafana_domain | default('grafana.local') }}"
+      - "Prometheus: https://{{ prometheus_domain | default('prometheus.local') }}"
+      - "AlertManager: https://{{ alertmanager_domain | default('alertmanager.local') }}"
+      - ""
+      - "Default Credentials:"
+      - "Grafana: {{ grafana_admin_user | default('admin') }} / {{ grafana_admin_password | default('admin123!') }}"
+      - ""
+      - "Storage:"
+      - "Prometheus: {{ prometheus_storage_size | default('50Gi') }} ({{ 'Enabled' if monitoring_storage_enabled | default(true) else 'Disabled' }})"
+      - "Grafana: {{ grafana_storage_size | default('10Gi') }} ({{ 'Enabled' if monitoring_storage_enabled | default(true) else 'Disabled' }})"
+      - ""
+      - "Data Retention:"
+      - "Prometheus: {{ prometheus_retention | default('30d') }}"
+      - ""
+      - "Next Steps:"
+      - "1. Access Grafana and explore pre-configured dashboards"
+      - "2. Configure AlertManager notification channels"
+      - "3. Import additional custom dashboards as needed"
+      - "4. Set up log aggregation with Loki (deploy logging role)"
+  run_once: true

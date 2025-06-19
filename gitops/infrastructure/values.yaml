@@ -1,0 +1,162 @@
+# Default values for k3s-infrastructure
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global configuration shared across all subcharts
+global:
+  environment: dev
+  domain: "cluster.local"
+  cluster_name: "k3s-dev"
+
+# cert-manager configuration
+cert_manager:
+  enabled: true
+  installCRDs: true
+  webhook:
+    hostNetwork: false
+    securePort: 10250
+  prometheus:
+    enabled: true
+    servicemonitor:
+      enabled: true
+      prometheusInstance: kube-prometheus
+
+# MetalLB configuration
+metallb:
+  enabled: true
+  controller:
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: "true"
+    tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+  speaker:
+    tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/arch"
+        operator: "Equal"
+        value: "arm64"
+        effect: "NoSchedule"
+
+# Ingress NGINX configuration
+ingress-nginx:
+  enabled: true
+  controller:
+    ingressClassResource:
+      default: true
+    service:
+      type: LoadBalancer
+      annotations:
+        metallb.universe.tf/loadBalancer-class: "metallb"
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+
+# ArgoCD configuration
+argo-cd:
+  enabled: true
+  global:
+    image:
+      tag: "v2.11.0"
+  server:
+    ingress:
+      enabled: false  # Managed separately
+    config:
+      url: "https://argocd.{{ .Values.global.domain }}"
+    extraArgs:
+      - --insecure
+  applicationSet:
+    enabled: true
+  dex:
+    enabled: false
+  notifications:
+    enabled: true
+
+# Monitoring stack configuration
+kube-prometheus-stack:
+  enabled: true
+  prometheus:
+    prometheusSpec:
+      retention: 15d
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: longhorn
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 20Gi
+  grafana:
+    enabled: true
+    adminPassword: "admin"
+    ingress:
+      enabled: false  # Managed separately
+  alertmanager:
+    enabled: true
+
+# Longhorn distributed storage
+longhorn:
+  enabled: false  # Enable per environment
+  persistence:
+    defaultClass: true
+    defaultClassReplicaCount: 2
+  defaultSettings:
+    backupTarget: ""
+    backupTargetCredentialSecret: ""
+    createDefaultDiskLabeledNodes: true
+    defaultDataPath: "/opt/longhorn/"
+    replicaSoftAntiAffinity: true
+
+# Sealed Secrets configuration
+sealed-secrets:
+  enabled: true
+  fullnameOverride: "sealed-secrets-controller"
+  image:
+    repository: "bitnami/sealed-secrets-controller"
+    tag: "v0.24.4"
+    pullPolicy: "IfNotPresent"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    fsGroup: 65534
+  service:
+    port: 8080
+    type: ClusterIP
+  serviceAccount:
+    create: true
+    name: "sealed-secrets-controller"
+  rbac:
+    create: true
+    pspEnabled: false
+  metrics:
+    port: 8081
+    serviceMonitor:
+      enabled: true
+      namespace: "kube-system"
+      labels:
+        release: kube-prometheus-stack
+  extraEnv:
+    - name: "LOG_LEVEL"
+      value: "info"
+
+# Additional infrastructure components
+external-dns:
+  enabled: false
+  provider: cloudflare
+
+vault:
+  enabled: false
+
+falco:
+  enabled: false

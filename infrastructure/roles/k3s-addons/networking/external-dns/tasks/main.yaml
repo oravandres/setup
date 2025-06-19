@@ -1,0 +1,81 @@
+---
+# external-dns v0.14 Role - Main Tasks
+- name: Add external-dns Helm repository
+  kubernetes.core.helm_repository:
+    name: external-dns
+    repo_url: https://kubernetes-sigs.github.io/external-dns/
+    state: present
+
+- name: Update Helm repositories
+  kubernetes.core.helm:
+    name: dummy
+    chart_ref: dummy
+    release_namespace: dummy
+    state: absent
+    update_repo_cache: yes
+
+- name: Create external-dns namespace
+  kubernetes.core.k8s:
+    name: external-dns
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Create Cloudflare API token secret for external-dns
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cloudflare-api-token
+        namespace: external-dns
+      type: Opaque
+      stringData:
+        api-token: "{{ cloudflare_api_token }}"
+    state: present
+  when: cloudflare_api_token is defined
+
+- name: Install external-dns via Helm
+  kubernetes.core.helm:
+    name: external-dns
+    chart_ref: external-dns/external-dns
+    release_namespace: external-dns
+    chart_version: "{{ external_dns_chart_version | default('1.14.1') }}"
+    values: "{{ external_dns_values }}"
+    create_namespace: true
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 300s
+
+- name: Wait for external-dns pods to become ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: external-dns
+    label_selectors:
+      - app.kubernetes.io/name=external-dns
+  register: external_dns_pods
+  until: external_dns_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length == (external_dns_pods.resources | length)
+  retries: 30
+  delay: 10
+
+- name: Deploy external-dns validation script
+  template:
+    src: validate-external-dns.sh.j2
+    dest: /usr/local/bin/validate-external-dns
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Run external-dns validation
+  command: /usr/local/bin/validate-external-dns
+  register: external_dns_validation
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Display external-dns validation results
+  debug:
+    var: external_dns_validation.stdout_lines
+  run_once: true

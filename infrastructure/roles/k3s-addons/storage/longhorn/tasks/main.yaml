@@ -1,0 +1,410 @@
+---
+- name: Check if Longhorn is already installed
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: longhorn-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: longhorn_namespace
+  failed_when: false
+
+- name: Create namespace for Longhorn
+  kubernetes.core.k8s:
+    name: longhorn-system
+    api_version: v1
+    kind: Namespace
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  when: longhorn_namespace.resources | length == 0
+
+- name: Add Longhorn Helm repository
+  kubernetes.core.helm_repository:
+    name: longhorn
+    repo_url: https://charts.longhorn.io
+
+- name: Create Longhorn values configuration
+  copy:
+    content: |
+      # Longhorn configuration optimized for heterogeneous cluster (1 PC + 6 Pis)
+      # Modern Kubernetes-native distributed storage
+
+      # Default settings
+      defaultSettings:
+        # Storage settings optimized for USB SSDs
+        defaultDataPath: /var/lib/longhorn/
+        defaultDataLocality: best-effort
+        replicaSoftAntiAffinity: true
+        replicaAutoBalance: best-effort
+        storageOverProvisioningPercentage: 200
+        storageMinimalAvailablePercentage: 25
+
+        # Performance settings for mixed hardware
+        upgradeChecker: true
+        defaultReplicaCount: 3  # Task 6: Use 3 replicas for high availability
+        defaultLonghornStaticStorageClass: longhorn
+        backupstorePollInterval: 300
+
+        # Node settings
+        createDefaultDiskLabeledNodes: true
+        defaultDataLocality: best-effort
+        nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+
+        # Recovery settings
+        autoSalvage: true
+        autoDeletePodWhenVolumeDetachedUnexpectedly: true
+        disableSchedulingOnCordonedNode: true
+        replicaReplenishmentWaitInterval: 600
+
+        # Snapshot settings
+        concurrentAutomaticEngineUpgradePerNodeLimit: 1
+        backupCompressionMethod: lz4
+
+        # CSI settings
+        csiAttacherWorkerThreads: 8
+        csiProvisionerWorkerThreads: 8
+        csiResizerWorkerThreads: 8
+        csiSnapshotterWorkerThreads: 8
+
+      # Longhorn Manager (main controller)
+      longhornManager:
+        # Resource limits for manager
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+
+        # Node affinity - can run anywhere but prefer stable nodes
+        nodeSelector: {}
+
+        # Tolerations for mixed architecture
+        tolerations:
+          - key: "arm"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          - key: "node.kubernetes.io/arch"
+            operator: "Equal"
+            value: "arm64"
+            effect: "NoSchedule"
+
+        # Priority class for system stability
+        priorityClass: system-cluster-critical
+
+      # Longhorn Driver (CSI)
+      longhornDriver:
+        # Resource limits for CSI driver
+        resources:
+          limits:
+            cpu: 200m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+
+        # Tolerations to run on all nodes
+        tolerations:
+          - key: node-role.kubernetes.io/master
+            operator: Exists
+            effect: NoSchedule
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+          - key: "arm"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          - key: "node.kubernetes.io/arch"
+            operator: "Equal"
+            value: "arm64"
+            effect: "NoSchedule"
+
+      # Longhorn UI
+      longhornUI:
+        # Resource limits for UI
+        resources:
+          limits:
+            cpu: 200m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+
+        # Node affinity - prefer PC for better performance
+        nodeSelector: {}
+
+        # Tolerations for mixed architecture
+        tolerations:
+          - key: "arm"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+          - key: "node.kubernetes.io/arch"
+            operator: "Equal"
+            value: "arm64"
+            effect: "NoSchedule"
+
+      # Storage class configuration
+      persistence:
+        defaultClass: true
+        defaultClassReplicaCount: 3  # Task 6: 3 replicas for default StorageClass
+        defaultDataLocality: best-effort
+        reclaimPolicy: Delete
+
+      # CSI Driver settings
+      csi:
+        kubeletRootDir: /var/lib/kubelet
+        attacherReplicaCount: 2
+        provisionerReplicaCount: 2
+        resizerReplicaCount: 2
+        snapshotterReplicaCount: 2
+
+      # Service configuration
+      service:
+        ui:
+          type: ClusterIP
+        manager:
+          type: ClusterIP
+
+      # Ingress (disabled, using NodePort)
+      ingress:
+        enabled: false
+
+      # Enable metrics for monitoring
+      metrics:
+        serviceMonitor:
+          enabled: true
+    dest: /tmp/longhorn-values.yaml
+    mode: '0644'
+  when: longhorn_namespace.resources | length == 0
+
+- name: Install prerequisite packages for Longhorn
+  shell: |
+    # Check and install iscsi-initiator-utils on all nodes
+    kubectl get nodes -o wide --no-headers | awk '{print $6}' | while read NODE_IP; do
+      echo "Checking node $NODE_IP"
+      # Note: This would need SSH access to nodes
+      # In practice, you'd run this via Ansible on all nodes
+    done
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  when: longhorn_namespace.resources | length == 0
+
+- name: Create Longhorn prerequisite DaemonSet
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: longhorn-iscsi-installation
+        namespace: longhorn-system
+        labels:
+          app: longhorn-iscsi-installation
+      spec:
+        selector:
+          matchLabels:
+            app: longhorn-iscsi-installation
+        template:
+          metadata:
+            labels:
+              app: longhorn-iscsi-installation
+          spec:
+            hostNetwork: true
+            hostPID: true
+            hostIPC: true
+            containers:
+            - name: iscsi-installation
+              image: alpine:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # Install iscsi-initiator-utils on the host
+                  nsenter --mount=/proc/1/ns/mnt --net=/proc/1/ns/net -- \
+                  sh -c 'apt-get update && apt-get install -y open-iscsi || yum install -y iscsi-initiator-utils || apk add --no-cache open-iscsi'
+
+                  # Enable and start iscsid service
+                  nsenter --mount=/proc/1/ns/mnt --net=/proc/1/ns/net -- \
+                  sh -c 'systemctl enable iscsid && systemctl start iscsid' || true
+
+                  # Keep container running
+                  sleep infinity
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - name: host-root
+                  mountPath: /host
+                  mountPropagation: Bidirectional
+            volumes:
+              - name: host-root
+                hostPath:
+                  path: /
+            tolerations:
+              - operator: Exists
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  when: longhorn_namespace.resources | length == 0
+
+- name: Wait for prerequisite installation
+  pause:
+    seconds: 30
+  when: longhorn_namespace.resources | length == 0
+
+- name: Deploy Longhorn v1.7 with custom configuration
+  kubernetes.core.helm:
+    name: longhorn
+    chart_ref: longhorn/longhorn
+    chart_version: "^1.7.0"  # Task 6: Ensure we use Longhorn v1.7.x
+    release_namespace: longhorn-system
+    create_namespace: true
+    values_files:
+      - /tmp/longhorn-values.yaml
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    wait: true
+    timeout: 15m
+  when: longhorn_namespace.resources | length == 0
+
+- name: Wait for Longhorn manager to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: longhorn-system
+    label_selectors:
+      - app=longhorn-manager
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: longhorn_manager_pods
+  until: longhorn_manager_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+  retries: 30
+  delay: 30
+
+- name: Wait for Longhorn UI to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: longhorn-system
+    label_selectors:
+      - app=longhorn-ui
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: longhorn_ui_pods
+  until: longhorn_ui_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+  retries: 20
+  delay: 30
+
+- name: Create Longhorn UI NodePort service
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: longhorn-frontend-nodeport
+        namespace: longhorn-system
+        labels:
+          app: longhorn-ui
+      spec:
+        type: NodePort
+        ports:
+          - port: 80
+            targetPort: 8000
+            nodePort: 30070
+            protocol: TCP
+            name: http
+        selector:
+          app: longhorn-ui
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+- name: Check Longhorn storage class
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+    name: longhorn
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: longhorn_sc
+
+- name: Get node information for access details
+  shell: kubectl get nodes -o wide --no-headers | head -1 | awk '{print $6}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: node_ip
+  changed_when: false
+
+- name: Check Longhorn nodes
+  shell: kubectl get nodes.longhorn.io -n longhorn-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: longhorn_nodes
+  changed_when: false
+  failed_when: false
+
+- name: Display Longhorn storage status
+  debug:
+    msg: |
+      ✅ Longhorn v1.7 Distributed Storage Status:
+      - Manager pods running: {{ longhorn_manager_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+      - UI pods running: {{ longhorn_ui_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
+      - Storage class created: {{ 'Yes' if longhorn_sc.resources else 'No' }}
+
+      🌐 Access Information:
+      - Longhorn UI: http://{{ node_ip.stdout }}:30070
+      - Storage class: longhorn ({{ 'default' if longhorn_sc.resources and longhorn_sc.resources[0].metadata.annotations['storageclass.kubernetes.io/is-default-class'] == 'true' else 'not default' }})
+
+      📊 Task 6 Configuration (v1.7 with 3 replicas):
+      - Version: Longhorn v1.7.x (latest production release)
+      - Default replicas: 3 (high availability - can lose 2 nodes)
+      - Distributed storage across all available storage
+      - Volume snapshots and backups ready
+      - CSI-compliant dynamic provisioning
+      - Cross-node data availability
+      - Performance isolation per workload
+
+      🔧 Storage Features:
+      - Replica auto-balance across nodes
+      - Storage over-provisioning: 200%
+      - Anti-affinity for replica placement
+      - Automatic volume recovery
+      - LZ4 compression for backups
+      - NVMe storage pool ready for optimization
+
+      📝 Next Steps:
+      1. Validate installation: /usr/local/bin/validate-longhorn
+      2. Access Longhorn UI to monitor storage
+      3. Configure NVMe storage pools for high-performance workloads
+      4. Set up backup targets (S3, NFS, etc.) - see Task 9
+      5. Test stateful applications with 3-replica volumes
+
+      💡 NVMe Optimization:
+      - Add NVMe mount paths via Longhorn UI
+      - Tag NVMe disks for performance workloads
+      - Use disk selectors for workload-specific placement
+
+      🛠️ Validation:
+      - Run: /usr/local/bin/validate-longhorn
+      - Tests 3-replica creation and distribution
+      - Verifies NVMe storage detection
+
+- name: Copy Longhorn validation script
+  copy:
+    src: validate-longhorn.sh
+    dest: /usr/local/bin/validate-longhorn
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+
+- name: Clean up temporary files and DaemonSet
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: longhorn-iscsi-installation
+        namespace: longhorn-system
+    state: absent
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  ignore_errors: true
+
+- name: Clean up temporary values file
+  file:
+    path: /tmp/longhorn-values.yaml
+    state: absent

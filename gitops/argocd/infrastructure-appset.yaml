@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure
+  namespace: argocd
+spec:
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            environment: "{{.values.environment}}"
+  template:
+    metadata:
+      name: 'infrastructure-{{.name}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/your-org/k3s-homelab-setup
+        targetRevision: HEAD
+        path: 'gitops/infrastructure/charts'
+        helm:
+          valueFiles:
+            - '../../environments/{{.values.environment}}/values.yaml'
+      destination:
+        server: '{{.server}}'
+        namespace: kube-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

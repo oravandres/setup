@@ -1,0 +1,56 @@
+---
+- name: Check if Lens is already installed
+  command: lens-desktop --version
+  register: lens_installed
+  failed_when: false
+  changed_when: false
+  ignore_errors: false
+
+- name: Add Lens GPG key
+  get_url:
+    url: https://downloads.k8slens.dev/keys/gpg
+    dest: /tmp/lens-archive-keyring.gpg
+    mode: '0644'
+  when: lens_installed.rc != 0
+
+- name: Convert and install Lens GPG key
+  shell: gpg --dearmor < /tmp/lens-archive-keyring.gpg | sudo tee /usr/share/keyrings/lens-archive-keyring.gpg > /dev/null
+  when: lens_installed.rc != 0
+
+- name: Add Lens APT repository
+  apt_repository:
+    repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/lens-archive-keyring.gpg] https://downloads.k8slens.dev/apt/debian stable main"
+    state: present
+    filename: lens
+  when: lens_installed.rc != 0
+
+- name: Update apt cache after adding Lens repository
+  apt:
+    update_cache: yes
+  when: lens_installed.rc != 0
+
+- name: Install Lens
+  apt:
+    name: lens
+    state: present
+  when: lens_installed.rc != 0
+
+- name: Remove temporary GPG key file
+  file:
+    path: /tmp/lens-archive-keyring.gpg
+    state: absent
+  when: lens_installed.rc != 0
+
+- name: Verify Lens installation
+  shell: which lens-desktop 2>/dev/null || echo "not found"
+  register: lens_location
+  changed_when: false
+
+- name: Display Lens installation summary
+  debug:
+    msg:
+      - "Lens installation completed"
+      - "Lens is a powerful IDE for Kubernetes"
+      - "Launch from applications menu or run 'lens-desktop' in terminal"
+      - "Location: {{ lens_location.stdout if lens_location.stdout != 'not found' else 'Check installation' }}"
+      - "You can now connect to your Kubernetes clusters through Lens"

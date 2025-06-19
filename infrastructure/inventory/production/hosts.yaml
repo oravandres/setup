@@ -1,0 +1,87 @@
+---
+# Kubernetes Cluster Inventory
+# Heterogeneous cluster: 1 PC (localhost) + 6 Raspberry Pi nodes
+# Architecture: HA control plane with embedded etcd + worker nodes
+
+all:
+  children:
+    control_plane:
+      hosts:
+        localhost:
+          ansible_host: 127.0.0.1
+          ansible_connection: local
+          ansible_user: "{{ lookup('env', 'USER') }}"
+          node_architecture: amd64
+          node_type: primary_master
+          node_labels:
+            - "node-role.kubernetes.io/control-plane=true"
+            - "kubernetes.io/arch=amd64"
+        pi-c1:
+          ansible_host: 192.168.1.145
+          ansible_user: pi
+          node_architecture: arm64
+          node_type: control_plane
+          node_labels:
+            - "node-role.kubernetes.io/control-plane=true"
+            - "kubernetes.io/arch=arm64"
+        pi-c2:
+          ansible_host: 192.168.1.162
+          ansible_user: pi
+          node_architecture: arm64
+          node_type: control_plane
+          node_labels:
+            - "node-role.kubernetes.io/control-plane=true"
+            - "kubernetes.io/arch=arm64"
+
+    workers:
+      hosts:
+        pi-n1:
+          ansible_host: 192.168.1.150
+          ansible_user: pi
+          node_architecture: arm64
+          node_type: worker
+          node_labels:
+            - "node-role.kubernetes.io/worker=true"
+            - "kubernetes.io/arch=arm64"
+        pi-n2:
+          ansible_host: 192.168.1.8
+          ansible_user: pi
+          node_architecture: arm64
+          node_type: worker
+          node_labels:
+            - "node-role.kubernetes.io/worker=true"
+            - "kubernetes.io/arch=arm64"
+        pi-n3:
+          ansible_host: 192.168.1.230
+          ansible_user: pi
+          node_architecture: arm64
+          node_type: worker
+          node_labels:
+            - "node-role.kubernetes.io/worker=true"
+            - "kubernetes.io/arch=arm64"
+        pi-n4:
+          ansible_host: 192.168.1.206
+          ansible_user: pi
+          node_architecture: arm64
+          node_type: worker
+          node_labels:
+            - "node-role.kubernetes.io/worker=true"
+            - "kubernetes.io/arch=arm64"
+
+    # Logical groupings
+    k3s_cluster:
+      children:
+        control_plane:
+        workers:
+
+    raspberry_pi:
+      children:
+        control_plane:
+          hosts:
+            pi-c1:
+            pi-c2:
+        workers:
+
+    x86_nodes:
+      hosts:
+        localhost:

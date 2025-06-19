@@ -1,0 +1,94 @@
+---
+# Control plane specific variables
+# These settings apply only to K3s control plane nodes
+
+# K3s server configuration
+k3s_server: true
+k3s_agent: false
+
+# etcd configuration
+etcd_embedded: true
+etcd_backup_enabled: true
+etcd_backup_schedule: "0 2 * * *"  # Daily at 2 AM
+etcd_backup_retention: 7
+etcd_backup_dir: "/var/lib/rancher/k3s/server/db/snapshots"
+etcd_backup_s3_enabled: false
+
+# API server configuration
+api_server_port: 6443
+api_server_bind_address: "0.0.0.0"
+api_server_advertise_address: "{{ ansible_default_ipv4.address }}"
+
+# Control plane endpoint for HA
+control_plane_endpoint: "{{ vip_address }}:6443"
+cluster_init: "{{ inventory_hostname == groups['control_plane'][0] }}"
+
+# K3s server install arguments
+k3s_server_install_args:
+  - "--cluster-init={{ cluster_init }}"
+  - "--server={{ 'https://' + control_plane_endpoint if not cluster_init else '' }}"
+  - "--token={{ k3s_token }}"
+  - "--cluster-cidr={{ cluster_cidr }}"
+  - "--service-cidr={{ service_cidr }}"
+  - "--cluster-dns={{ cluster_dns }}"
+  - "--cluster-domain={{ cluster_domain }}"
+  - "--disable=traefik"  # Using Ingress-NGINX instead
+  - "--disable=servicelb"  # Using MetalLB instead
+  - "--disable=local-storage"  # Using Longhorn instead
+  - "--disable-cloud-controller"
+  - "--etcd-snapshot-schedule-cron={{ etcd_backup_schedule }}"
+  - "--etcd-snapshot-retention={{ etcd_backup_retention }}"
+  - "--node-label=kubernetes.io/arch={{ node_architecture }}"
+  - "--kubelet-arg=eviction-hard=memory.available<100Mi,nodefs.available<10%"
+  - "--kubelet-arg=eviction-soft=memory.available<300Mi,nodefs.available<15%"
+  - "--kubelet-arg=eviction-soft-grace-period=memory.available=1m30s,nodefs.available=1m30s"
+
+# Control plane specific resource limits
+control_plane_resources:
+  memory_limit: "2Gi"
+  cpu_limit: "1000m"
+  memory_request: "1Gi"
+  cpu_request: "500m"
+
+# HAProxy configuration for API load balancing
+haproxy_enabled: true
+haproxy_stats_enabled: true
+haproxy_stats_port: 8404
+haproxy_stats_user: "admin"
+haproxy_stats_password: "{{ vault_haproxy_stats_password | default('changeme') }}"
+
+# keepalived configuration
+keepalived_enabled: true
+keepalived_interface: "{{ ansible_default_ipv4.interface }}"
+keepalived_router_id: 51
+keepalived_priority:
+  localhost: 110  # Highest priority for primary master
+  pi-c1: 100
+  pi-c2: 90
+
+# Control plane tolerations
+control_plane_tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# Backup configuration
+backup_enabled: true
+backup_schedule: "0 3 * * *"  # Daily at 3 AM
+backup_retention_days: 14
+backup_storage_path: "/opt/k3s-backups"
+
+# Monitoring and alerting
+prometheus_node_exporter_enabled: true
+prometheus_node_exporter_port: 9100
+alertmanager_enabled: true
+
+# Security settings
+audit_log_enabled: true
+audit_log_path: "/var/log/k3s-audit.log"
+audit_log_maxage: 30
+audit_log_maxbackup: 10
+audit_log_maxsize: 100

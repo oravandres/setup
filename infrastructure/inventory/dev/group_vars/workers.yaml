@@ -1,0 +1,78 @@
+---
+# Worker node specific variables
+# These settings apply only to K3s worker nodes
+
+# K3s agent configuration
+k3s_server: false
+k3s_agent: true
+
+# Agent install arguments
+k3s_agent_install_args:
+  - "--server=https://{{ control_plane_endpoint }}"
+  - "--token={{ k3s_token }}"
+  - "--node-label=kubernetes.io/arch={{ node_architecture }}"
+  - "--node-label=node-role.kubernetes.io/worker=true"
+  - "--kubelet-arg=eviction-hard=memory.available<100Mi,nodefs.available<10%"
+  - "--kubelet-arg=eviction-soft=memory.available<200Mi,nodefs.available<15%"
+  - "--kubelet-arg=eviction-soft-grace-period=memory.available=1m30s,nodefs.available=1m30s"
+  - "--kubelet-arg=max-pods=110"
+
+# Worker node resource configuration
+worker_resources:
+  memory_limit: "1Gi"
+  cpu_limit: "500m"
+  memory_request: "512Mi"
+  cpu_request: "250m"
+
+# Storage configuration for Longhorn
+longhorn_storage_enabled: true
+longhorn_storage_path: "/var/lib/longhorn"
+longhorn_replica_count: 2  # Reduced for Pi nodes
+
+# Container runtime settings
+containerd_max_container_log_line_size: 16384
+containerd_snapshotter: "overlayfs"
+
+# Network configuration
+cni_plugin: "flannel"
+flannel_backend: "vxlan"
+
+# Resource management
+enable_cpu_manager: false  # Disabled for Pi nodes
+enable_memory_manager: false
+enable_topology_manager: false
+
+# Workload scheduling preferences
+node_affinity_rules:
+  prefer_workers: true
+  avoid_control_plane: true
+
+# Monitoring
+cadvisor_enabled: true
+cadvisor_port: 4194
+node_exporter_enabled: true
+node_exporter_port: 9100
+
+# Security
+read_only_root_filesystem: false
+run_as_non_root: false
+allow_privilege_escalation: true  # Required for some workloads
+
+# Maintenance windows
+maintenance_allowed: true
+maintenance_window_start: "02:00"
+maintenance_window_end: "04:00"
+maintenance_timezone: "UTC"
+
+# Logging
+log_driver: "json-file"
+log_max_size: "10m"
+log_max_files: "3"
+
+# GPU support (for future expansion)
+gpu_enabled: false
+gpu_runtime: "nvidia"
+
+# Taints and tolerations (none by default for workers)
+node_taints: []
+node_tolerations: []

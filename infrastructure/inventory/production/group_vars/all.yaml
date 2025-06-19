@@ -1,0 +1,73 @@
+---
+# Global variables for all hosts in the K3s cluster
+# These settings apply to all nodes regardless of role
+
+# Ansible connection settings
+ansible_python_interpreter: /usr/bin/python3
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+ansible_ssh_private_key_file: "/home/andres/.ssh/id_ed25519"
+
+# Common paths and directories
+k3s_config_dir: /etc/rancher/k3s
+k3s_data_dir: /var/lib/rancher/k3s
+k3s_bin_dir: /usr/local/bin
+kubeconfig_path: "{{ ansible_env.HOME }}/.kube/k3s-config"
+
+# Network configuration
+cluster_cidr: "10.42.0.0/16"
+service_cidr: "10.43.0.0/16"
+cluster_dns: "10.43.0.10"
+cluster_domain: "cluster.local"
+
+# Local network settings
+local_network: "192.168.1.0/24"
+metallb_ip_range: "192.168.1.200-192.168.1.220"
+vip_address: "192.168.1.202"  # HAProxy VIP for K3s API
+
+# Common package lists
+common_packages:
+  - curl
+  - wget
+  - git
+  - htop
+  - iotop
+  - vim
+  - jq
+  - unzip
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Kubernetes versions and compatibility
+k3s_version: "v1.28.5+k3s1"
+kubernetes_version: "1.28.5"
+
+# Container runtime settings
+containerd_config_dir: /etc/containerd
+containerd_data_dir: /var/lib/containerd
+
+# Logging and monitoring
+log_level: info
+enable_metrics: true
+metrics_port: 10250
+
+# Security settings
+disable_cloud_controller: true
+disable_network_policy: false
+enable_psp: false  # Pod Security Policies deprecated in K8s 1.25+
+
+# Backup and maintenance
+backup_retention_days: 7
+maintenance_window: "02:00-04:00"
+timezone: "UTC"
+
+# Development and debugging
+debug_mode: false
+verbose_logging: false
+
+# Feature flags
+enable_gpu_support: true
+enable_chaos_testing: true
+enable_monitoring: true
+enable_logging: true
+enable_backup: true

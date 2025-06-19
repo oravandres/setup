@@ -1,0 +1,94 @@
+<context>
+# Overview  
+**Project Aegis (Lite)** delivers a production-ready bare-metal K3s cluster that is **highly available, self-serviced via GitOps, and ready for stateful workloads** — but without the extra complexity of service meshes, policy engines, or multi-cluster federation.  
+
+| Problem                                                                                    | Target Users                                                                  | Core Value                                                                                               |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Single-node defaults (ServiceLB, Traefik, local-path) create SPOFs; manual ops slow teams. | DevOps/SREs running on-prem clusters; app developers expecting cloud-like UX. | Resilient control-plane, automated ingress & TLS, GitOps CD, and persistent storage — all in < 40 nodes. |
+
+# Core Features
+
+| # | Feature                          | What It Does                                                                               | Why It Matters                                      |
+| - | -------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| 1 | **MetalLB LoadBalancer**         | Provides L2/BGP virtual IPs for `LoadBalancer` services.                                   | Enables cloud-style service exposure on bare metal. |
+| 2 | **Ingress-NGINX Controller**     | Terminates HTTP/S, supports rewrites & WAF.                                                | Richer ingress than Traefik, foundation for TLS.    |
+| 3 | **HA Control Plane**             | HAProxy + keepalived VIP in front of three K3s masters; kubeconfig auto-points to the VIP. | Removes master SPOF; ensures CLI/CI keeps working.  |
+| 4 | **Longhorn Distributed Storage** | Replicates block volumes across nodes; snapshots & restore.                                | Makes stateful apps and etcd snapshots resilient.   |
+| 5 | **Automated TLS & Wildcard DNS** | cert-manager (ACME DNS-01) + ExternalDNS to Cloudflare.                                    | Hands-free HTTPS for every app sub-domain.          |
+| 6 | **ArgoCD GitOps Platform**       | Declarative app deployment & rollback.                                                     | Fast, auditable, self-service delivery.             |
+| 7 | **etcd Backup & Restore**        | Encrypted snapshots shipped to MinIO/NAS.                                                  | Rapid recovery from catastrophic loss.              |
+
+# User Experience
+
+*Personas*
+*Anna (DevOps)* boots the cluster, upgrades K3s.
+*Ben (Developer)* deploys an app by pushing Helm charts to Git.
+
+*Key Flow: “Deploy a New Service”*
+
+1. Ben pushes code → CI builds & updates Helm chart repository.
+2. ArgoCD syncs → Service of type `LoadBalancer`.
+3. MetalLB allocates a VIP; Ingress-NGINX routes traffic.
+4. cert-manager issues wildcard cert automatically; service is live at `https://myapp.apps.company.tld`.
+
+</context>
+
+<PRD>
+# Technical Architecture  
+
+| Layer                   | Component                                 | Notes                              |
+| ----------------------- | ----------------------------------------- | ---------------------------------- |
+| **Control Plane**       | 3 × K3s masters (embedded etcd)           | Flannel (VXLAN), containerd.       |
+| **Load Balancer (API)** | HAProxy + keepalived VIP `10.0.0.10:6443` | Health-check `/healthz` every 2 s. |
+| **Service LB**          | MetalLB (layer-2 pool `10.0.0.30-.50`)    | Dual-stack ready.                  |
+| **Ingress**             | Ingress-NGINX (DaemonSet, hostNetwork)    | ModSecurity WAF enabled.           |
+| **Storage**             | Longhorn v1.7                             | 3 × replicas, NVMe pool.           |
+| **CI/CD**               | ArgoCD v2.11 + Image Updater              | SSO via Keycloak OIDC.             |
+| **Security**            | cert-manager v1.15, ExternalDNS v0.14     | Let’s Encrypt staging → prod.      |
+| **Backup/DR**           | etcd CronJob + rclone to MinIO            | Retention 7d / 30d.                |
+| **Observability**       | Prometheus, Grafana, Loki                 | Pre-made dashboards.               |
+
+Infrastructure minimum: 3 masters (4 vCPU/8 GiB), 2 workers (8 vCPU/16 GiB), LACP 10 GbE, NAS for MinIO.
+
+# Development Roadmap
+
+| Phase                    | Deliverables (Task IDs)                | Outcome                                   |
+| ------------------------ | -------------------------------------- | ----------------------------------------- |
+| **0 – Foundation**       | 1 MetalLB, 2 Ingress-NGINX             | External traffic & L4/L7 entry.           |
+| **1 – HA Control Plane** | 3 HAProxy, 4 kubeconfig, 5 HA tests    | Master SPOF removed; resilience verified. |
+| **2 – State & Delivery** | 6 Longhorn, 7 cert+DNS, 10 ArgoCD      | Stateful workloads, HTTPS, GitOps CD.     |
+| **3 – Resilience**       | 9 etcd backup (+ periodic chaos in CI) | Full backup/restore pipeline.             |
+
+Each phase is independently usable and demo-ready.
+
+# Logical Dependency Chain
+
+```
+1 MetalLB
+ └─2 Ingress-NGINX
+    ├─7 TLS & DNS
+    │  └─10 ArgoCD
+    └─3 HAProxy
+       └─4 Kubeconfig
+          └─5 HA Tests
+             └─6 Longhorn
+                └─9 etcd Backup
+```
+
+# Risks and Mitigations
+
+| Risk                                 | Likelihood | Impact | Mitigation                                      |
+| ------------------------------------ | ---------- | ------ | ----------------------------------------------- |
+| Mis-configured MetalLB announcements | Medium     | High   | Use separate LB subnet; staged rollout.         |
+| HAProxy VIP failover split-brain     | Low        | High   | keepalived TTL = 2 s; test with chaos suite.    |
+| Longhorn I/O latency                 | Medium     | Medium | Benchmark; adjust replica count & NVMe tiering. |
+| Let’s Encrypt rate limits            | Low        | Medium | Staging issuer in non-prod; DNS-01 wildcard.    |
+| Backup job failures                  | Medium     | High   | Alert on snapshot age; weekly restore drills.   |
+
+# Appendix
+
+* **Versions:** K3s v1.29, MetalLB v0.14, Ingress-NGINX v1.11, Longhorn v1.7, ArgoCD v2.11.
+* **Compliance:** Aligns with CIS Kubernetes v1.25 L1 controls 1.1–1.6, 4.2–4.3.
+* **Glossary:** *VIP* = Virtual IP; *SPOF* = Single Point of Failure; *DR* = Disaster Recovery.
+
+</PRD>

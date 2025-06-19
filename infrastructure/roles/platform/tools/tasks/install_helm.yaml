@@ -1,0 +1,27 @@
+---
+- name: Check if Helm is already installed
+  command: helm version --short
+  register: helm_installed
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+
+- name: Install Helm
+  shell: |
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+  when: helm_installed.rc != 0
+
+- name: Verify Helm installation
+  command: helm version --short
+  register: helm_version_check
+  changed_when: false
+
+- name: Display Helm installation summary
+  debug:
+    msg:
+      - "Helm installation completed"
+      - "Version: {{ helm_version_check.stdout if helm_version_check.stdout is defined else 'Unknown' }}"
+      - "Executable: /usr/local/bin/helm"
+      - "Helm is ready for Kubernetes package management"

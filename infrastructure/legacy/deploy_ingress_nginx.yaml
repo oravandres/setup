@@ -1,0 +1,249 @@
+---
+- name: Deploy Ingress NGINX Controller for K3s Cluster
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    kubeconfig_path: "{{ ansible_env.HOME }}/.kube/k3s-config"
+
+  tasks:
+    - name: Verify K3s cluster is accessible
+      shell: kubectl get nodes --no-headers | wc -l
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: node_count
+      failed_when: node_count.stdout | int < 3
+
+    - name: Verify MetalLB is deployed
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: metallb-system
+        label_selectors:
+          - app.kubernetes.io/name=metallb
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: metallb_pods
+      failed_when: metallb_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length < 1
+
+    - name: Display deployment information
+      debug:
+        msg:
+          - "🚀 Starting Ingress NGINX Deployment"
+          - "Target K3s cluster: {{ node_count.stdout }} nodes"
+          - "MetalLB pods running: {{ metallb_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}"
+          - "Kubeconfig: {{ kubeconfig_path }}"
+
+    - name: Add Ingress NGINX Helm repository
+      kubernetes.core.helm_repository:
+        name: ingress-nginx
+        repo_url: https://kubernetes.github.io/ingress-nginx
+
+    - name: Create namespace for Ingress NGINX
+      kubernetes.core.k8s:
+        name: ingress-nginx
+        api_version: v1
+        kind: Namespace
+        state: present
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Create Ingress NGINX values configuration
+      copy:
+        content: |
+          controller:
+            image:
+              tag: "v1.11.2"
+            replicaCount: 2
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 200m
+                memory: 256Mi
+            service:
+              type: LoadBalancer
+              loadBalancerIP: 192.168.1.201
+              annotations:
+                metallb.universe.tf/allow-shared-ip: "ingress-nginx"
+            tolerations:
+              - key: "arm"
+                operator: "Equal"
+                value: "true"
+                effect: "NoSchedule"
+              - key: "node.kubernetes.io/arch"
+                operator: "Equal"
+                value: "arm64"
+                effect: "NoSchedule"
+              - key: "node-role.kubernetes.io/control-plane"
+                operator: "Exists"
+                effect: "NoSchedule"
+            config:
+              use-forwarded-headers: "true"
+              ssl-protocols: "TLSv1.2 TLSv1.3"
+              enable-gzip: "true"
+            metrics:
+              enabled: true
+              serviceMonitor:
+                enabled: false
+          defaultBackend:
+            enabled: true
+            resources:
+              limits:
+                cpu: 20m
+                memory: 32Mi
+              requests:
+                cpu: 10m
+                memory: 16Mi
+        dest: /tmp/ingress-nginx-values.yaml
+        mode: '0644'
+
+    - name: Deploy Ingress NGINX with custom configuration
+      kubernetes.core.helm:
+        name: ingress-nginx
+        chart_ref: ingress-nginx/ingress-nginx
+        release_namespace: ingress-nginx
+        create_namespace: true
+        values_files:
+          - /tmp/ingress-nginx-values.yaml
+        kubeconfig: "{{ kubeconfig_path }}"
+        wait: true
+        timeout: 10m
+
+    - name: Wait for LoadBalancer IP assignment
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        name: ingress-nginx-controller
+        namespace: ingress-nginx
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: ingress_service
+      until: ingress_service.resources[0].status.loadBalancer.ingress is defined
+      retries: 10
+      delay: 30
+
+    - name: Create test webapp deployment
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: test-webapp
+            namespace: default
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: test-webapp
+            template:
+              metadata:
+                labels:
+                  app: test-webapp
+              spec:
+                containers:
+                - name: nginx
+                  image: nginx:alpine
+                  ports:
+                  - containerPort: 80
+                  volumeMounts:
+                  - name: html
+                    mountPath: /usr/share/nginx/html
+                volumes:
+                - name: html
+                  configMap:
+                    name: test-webapp-html
+                tolerations:
+                  - key: "arm"
+                    operator: "Equal"
+                    value: "true"
+                    effect: "NoSchedule"
+                  - key: "node.kubernetes.io/arch"
+                    operator: "Equal"
+                    value: "arm64"
+                    effect: "NoSchedule"
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Create test webapp HTML content
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test-webapp-html
+            namespace: default
+          data:
+            index.html: |
+              <!DOCTYPE html>
+              <html>
+              <head><title>K3s Ingress Test</title></head>
+              <body>
+                <h1>🎉 Ingress NGINX Working!</h1>
+                <p>✅ MetalLB LoadBalancer: Active</p>
+                <p>✅ Ingress NGINX: Active</p>
+                <p>IP: 192.168.1.201</p>
+              </body>
+              </html>
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Create test webapp service
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: test-webapp
+            namespace: default
+          spec:
+            type: ClusterIP
+            ports:
+              - port: 80
+                targetPort: 80
+            selector:
+              app: test-webapp
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Create test ingress
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: test-webapp-ingress
+            namespace: default
+            annotations:
+              nginx.ingress.kubernetes.io/rewrite-target: /
+          spec:
+            ingressClassName: nginx
+            rules:
+            - http:
+                paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: test-webapp
+                      port:
+                        number: 80
+        kubeconfig: "{{ kubeconfig_path }}"
+
+    - name: Display Ingress NGINX status
+      debug:
+        msg: |
+          ✅ Ingress NGINX Status:
+          - LoadBalancer IP: {{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+          - Test URL: http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
+
+          ✅ Task 2 Complete: Ingress NGINX Controller deployed successfully!
+
+    - name: Test ingress connectivity
+      uri:
+        url: "http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else '127.0.0.1' }}"
+        method: GET
+        timeout: 10
+      register: ingress_test
+      ignore_errors: true
+      when: ingress_service.resources[0].status.loadBalancer.ingress is defined
+
+    - name: Clean up temporary values file
+      file:
+        path: /tmp/ingress-nginx-values.yaml
+        state: absent

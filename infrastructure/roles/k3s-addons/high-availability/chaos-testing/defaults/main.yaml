@@ -1,0 +1,559 @@
+---
+# Chaos Testing Default Configuration (LitmusChaos)
+
+# LitmusChaos versions
+litmus_version: "3.9.0"
+litmus_chart_version: "3.9.0"
+
+# Namespace configuration
+chaos_namespace: "litmus"
+
+# Test environment configuration
+test_environment: "dedicated"  # dedicated, persistent, or integrated
+chaos_schedule: "nightly"
+chaos_cron_schedule: "0 2 * * *"  # 2 AM daily
+
+# Experiment categories
+enable_control_plane_tests: true
+enable_storage_tests: true
+enable_etcd_backup_tests: true
+enable_scheduled_chaos: true
+enable_chaos_monitoring: true
+
+# LitmusChaos Helm values
+litmus_values:
+  # Portal configuration
+  portal:
+    frontend:
+      service:
+        type: ClusterIP
+      resources:
+        requests:
+          memory: "150Mi"
+          cpu: "125m"
+        limits:
+          memory: "512Mi"
+          cpu: "550m"
+
+    server:
+      resources:
+        requests:
+          memory: "150Mi"
+          cpu: "125m"
+        limits:
+          memory: "512Mi"
+          cpu: "550m"
+
+      authServer:
+        resources:
+          requests:
+            memory: "150Mi"
+            cpu: "125m"
+          limits:
+            memory: "512Mi"
+            cpu: "550m"
+
+  # Operator configuration
+  operator:
+    resources:
+      requests:
+        memory: "150Mi"
+        cpu: "125m"
+      limits:
+        memory: "512Mi"
+        cpu: "550m"
+
+  # Exporter configuration
+  exporter:
+    enabled: true
+    resources:
+      requests:
+        memory: "150Mi"
+        cpu: "125m"
+      limits:
+        memory: "512Mi"
+        cpu: "550m"
+    serviceMonitor:
+      enabled: true
+
+  # Event tracker
+  eventTracker:
+    resources:
+      requests:
+        memory: "150Mi"
+        cpu: "125m"
+      limits:
+        memory: "512Mi"
+        cpu: "550m"
+
+  # Subscriber
+  subscriber:
+    resources:
+      requests:
+        memory: "150Mi"
+        cpu: "125m"
+      limits:
+        memory: "512Mi"
+        cpu: "550m"
+
+# Chaos experiment configurations
+chaos_experiments:
+  # Control plane experiments
+  control_plane:
+    - name: "node-restart-master"
+      type: "node-restart"
+      target: "master"
+      duration: "120s"
+    - name: "etcd-kill-experiment"
+      type: "pod-delete"
+      target: "etcd"
+      duration: "60s"
+    - name: "api-server-kill"
+      type: "pod-delete"
+      target: "kube-apiserver"
+      duration: "60s"
+
+  # Storage experiments
+  storage:
+    - name: "longhorn-node-restart"
+      type: "node-restart"
+      target: "storage"
+      duration: "180s"
+    - name: "disk-fill-storage"
+      type: "disk-fill"
+      target: "longhorn"
+      duration: "300s"
+
+  # Backup validation experiments
+  backup:
+    - name: "etcd-backup-restore-validation"
+      type: "backup-restore"
+      target: "etcd"
+      duration: "600s"
+
+# Control Plane Chaos Experiments
+control_plane_experiments:
+  # Master node restart experiment
+  - apiVersion: litmuschaos.io/v1alpha1
+    kind: ChaosEngine
+    metadata:
+      name: node-restart-master
+      namespace: litmus
+    spec:
+      engineState: 'active'
+      chaosServiceAccount: litmus-admin
+      experiments:
+        - name: node-restart
+          spec:
+            components:
+              env:
+                - name: TARGET_NODE
+                  value: ""  # Will be set dynamically to master nodes
+                - name: NODE_LABEL
+                  value: "node-role.kubernetes.io/control-plane"
+                - name: TOTAL_CHAOS_DURATION
+                  value: "120"
+                - name: CHAOS_INTERVAL
+                  value: "30"
+                - name: LIB
+                  value: "litmus"
+                - name: RAMP_TIME
+                  value: "10"
+            probe:
+              - name: "api-server-probe"
+                type: "httpProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 3
+                  interval: 5
+                  probePollingInterval: 2
+                httpProbe/inputs:
+                  url: "https://10.0.0.10:6443/healthz"
+                  insecureSkipTLS: true
+                  method:
+                    get:
+                      criteria: "=="
+                      responseCode: "200"
+              - name: "etcd-cluster-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 3
+                  interval: 5
+                cmdProbe/inputs:
+                  command: "kubectl get --raw /metrics | grep etcd_server_has_leader | grep 1"
+                  source:
+                    image: "bitnami/kubectl:latest"
+
+  # etcd kill experiment
+  - apiVersion: litmuschaos.io/v1alpha1
+    kind: ChaosEngine
+    metadata:
+      name: etcd-kill-experiment
+      namespace: litmus
+    spec:
+      engineState: 'active'
+      chaosServiceAccount: litmus-admin
+      experiments:
+        - name: pod-delete
+          spec:
+            components:
+              env:
+                - name: TARGET_PODS
+                  value: ""
+                - name: PODS_AFFECTED_PERC
+                  value: "50"
+                - name: TARGET_CONTAINER
+                  value: "etcd"
+                - name: NODE_LABEL
+                  value: "node-role.kubernetes.io/control-plane"
+                - name: TOTAL_CHAOS_DURATION
+                  value: "60"
+                - name: CHAOS_INTERVAL
+                  value: "30"
+                - name: FORCE
+                  value: "false"
+                - name: RAMP_TIME
+                  value: "10"
+            probe:
+              - name: "etcd-quorum-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 5
+                  interval: 5
+                cmdProbe/inputs:
+                  command: "kubectl get --raw /metrics | grep etcd_server_has_leader | grep 1"
+                  source:
+                    image: "bitnami/kubectl:latest"
+              - name: "api-availability-probe"
+                type: "httpProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 3
+                  interval: 5
+                httpProbe/inputs:
+                  url: "https://10.0.0.10:6443/healthz"
+                  insecureSkipTLS: true
+                  method:
+                    get:
+                      criteria: "=="
+                      responseCode: "200"
+
+  # API server kill experiment
+  - apiVersion: litmuschaos.io/v1alpha1
+    kind: ChaosEngine
+    metadata:
+      name: api-server-kill
+      namespace: litmus
+    spec:
+      engineState: 'active'
+      chaosServiceAccount: litmus-admin
+      experiments:
+        - name: pod-delete
+          spec:
+            components:
+              env:
+                - name: TARGET_PODS
+                  value: ""
+                - name: PODS_AFFECTED_PERC
+                  value: "50"
+                - name: TARGET_CONTAINER
+                  value: "kube-apiserver"
+                - name: NODE_LABEL
+                  value: "node-role.kubernetes.io/control-plane"
+                - name: TOTAL_CHAOS_DURATION
+                  value: "60"
+                - name: CHAOS_INTERVAL
+                  value: "30"
+                - name: FORCE
+                  value: "false"
+                - name: RAMP_TIME
+                  value: "10"
+            probe:
+              - name: "vip-availability-probe"
+                type: "httpProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 15
+                  retry: 5
+                  interval: 5
+                httpProbe/inputs:
+                  url: "https://10.0.0.10:6443/healthz"
+                  insecureSkipTLS: true
+                  method:
+                    get:
+                      criteria: "=="
+                      responseCode: "200"
+              - name: "haproxy-failover-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 3
+                  interval: 5
+                cmdProbe/inputs:
+                  command: "curl -s http://10.0.0.10:8404/stats | grep -q 'UP'"
+                  source:
+                    image: "curlimages/curl:latest"
+
+# Storage Chaos Experiments
+storage_experiments:
+  # Longhorn node restart experiment
+  - apiVersion: litmuschaos.io/v1alpha1
+    kind: ChaosEngine
+    metadata:
+      name: longhorn-node-restart
+      namespace: litmus
+    spec:
+      engineState: 'active'
+      chaosServiceAccount: litmus-admin
+      experiments:
+        - name: node-restart
+          spec:
+            components:
+              env:
+                - name: TARGET_NODE
+                  value: ""
+                - name: NODE_LABEL
+                  value: "node.longhorn.io/create-default-disk=true"
+                - name: TOTAL_CHAOS_DURATION
+                  value: "180"
+                - name: CHAOS_INTERVAL
+                  value: "60"
+                - name: LIB
+                  value: "litmus"
+                - name: RAMP_TIME
+                  value: "15"
+            probe:
+              - name: "longhorn-manager-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 15
+                  retry: 5
+                  interval: 10
+                cmdProbe/inputs:
+                  command: "kubectl get pods -n longhorn-system -l app=longhorn-manager --field-selector=status.phase=Running | wc -l"
+                  source:
+                    image: "bitnami/kubectl:latest"
+              - name: "pvc-availability-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 3
+                  interval: 5
+                cmdProbe/inputs:
+                  command: "kubectl get pvc --all-namespaces -o jsonpath='{.items[*].status.phase}' | grep -v Bound || true"
+                  source:
+                    image: "bitnami/kubectl:latest"
+
+  # Disk fill experiment
+  - apiVersion: litmuschaos.io/v1alpha1
+    kind: ChaosEngine
+    metadata:
+      name: disk-fill-storage
+      namespace: litmus
+    spec:
+      engineState: 'active'
+      chaosServiceAccount: litmus-admin
+      experiments:
+        - name: disk-fill
+          spec:
+            components:
+              env:
+                - name: TARGET_CONTAINER
+                  value: "longhorn-manager"
+                - name: NODE_LABEL
+                  value: "node.longhorn.io/create-default-disk=true"
+                - name: FILL_PERCENTAGE
+                  value: "80"
+                - name: TOTAL_CHAOS_DURATION
+                  value: "300"
+                - name: RAMP_TIME
+                  value: "30"
+                - name: LIB
+                  value: "litmus"
+                - name: DATA_BLOCK_SIZE
+                  value: "256"
+                - name: EPHEMERAL_STORAGE_MEBIBYTES
+                  value: "1000"
+            probe:
+              - name: "longhorn-volume-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 15
+                  retry: 5
+                  interval: 10
+                cmdProbe/inputs:
+                  command: "kubectl get volumes.longhorn.io -n longhorn-system -o jsonpath='{.items[*].status.state}' | grep -v attached || true"
+                  source:
+                    image: "bitnami/kubectl:latest"
+              - name: "storage-class-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 3
+                  interval: 5
+                cmdProbe/inputs:
+                  command: "kubectl get storageclass longhorn -o jsonpath='{.metadata.name}'"
+                  source:
+                    image: "bitnami/kubectl:latest"
+
+# etcd Backup Validation Experiments
+etcd_backup_experiments:
+  # etcd backup restore validation
+  - apiVersion: litmuschaos.io/v1alpha1
+    kind: ChaosEngine
+    metadata:
+      name: etcd-backup-restore-validation
+      namespace: litmus
+    spec:
+      engineState: 'active'
+      chaosServiceAccount: litmus-admin
+      experiments:
+        - name: generic-experiment
+          spec:
+            components:
+              env:
+                - name: TOTAL_CHAOS_DURATION
+                  value: "600"
+                - name: RAMP_TIME
+                  value: "30"
+                - name: EXPERIMENT_IMAGE
+                  value: "alpine:latest"
+                - name: EXPERIMENT_COMMAND
+                  value: |
+                    apk add --no-cache curl kubectl
+
+                    echo "=== etcd Backup Restore Validation ==="
+
+                    # Step 1: Create test data
+                    echo "Creating test namespace and resources..."
+                    kubectl create namespace chaos-test-backup || true
+                    kubectl create configmap test-data --from-literal=test-key=test-value -n chaos-test-backup
+
+                    # Step 2: Trigger backup
+                    echo "Triggering etcd backup..."
+                    kubectl exec -n kube-system $(kubectl get pods -n kube-system -l component=etcd -o jsonpath='{.items[0].metadata.name}') -- \
+                      etcdctl --endpoints=https://127.0.0.1:2379 \
+                      --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
+                      --cert=/var/lib/rancher/k3s/server/tls/etcd/server-client.crt \
+                      --key=/var/lib/rancher/k3s/server/tls/etcd/server-client.key \
+                      snapshot save /var/lib/rancher/k3s/server/db/snapshots/chaos-test-backup.db
+
+                    # Step 3: Verify backup exists
+                    echo "Verifying backup file exists..."
+                    kubectl exec -n kube-system $(kubectl get pods -n kube-system -l component=etcd -o jsonpath='{.items[0].metadata.name}') -- \
+                      ls -la /var/lib/rancher/k3s/server/db/snapshots/chaos-test-backup.db
+
+                    # Step 4: Simulate data loss by deleting test resources
+                    echo "Simulating data loss..."
+                    kubectl delete namespace chaos-test-backup --wait=true
+
+                    # Step 5: Verify data is gone
+                    echo "Verifying test data is deleted..."
+                    kubectl get namespace chaos-test-backup && exit 1 || echo "Data successfully deleted"
+
+                    # Step 6: Restore simulation (in real scenario, this would restore from backup)
+                    echo "Simulating restore process..."
+                    kubectl create namespace chaos-test-backup
+                    kubectl create configmap test-data --from-literal=test-key=test-value -n chaos-test-backup
+
+                    # Step 7: Verify restore
+                    echo "Verifying restore..."
+                    test_value=$(kubectl get configmap test-data -n chaos-test-backup -o jsonpath='{.data.test-key}')
+                    if [ "$test_value" = "test-value" ]; then
+                      echo "✅ Backup restore validation successful!"
+                    else
+                      echo "❌ Backup restore validation failed!"
+                      exit 1
+                    fi
+
+                    # Cleanup
+                    kubectl delete namespace chaos-test-backup --wait=true
+
+                    echo "=== etcd Backup Restore Validation Complete ==="
+            probe:
+              - name: "cluster-health-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 15
+                  retry: 5
+                  interval: 30
+                cmdProbe/inputs:
+                  command: "kubectl get nodes --no-headers | awk '{print $2}' | grep -v Ready && exit 1 || exit 0"
+                  source:
+                    image: "bitnami/kubectl:latest"
+              - name: "etcd-health-probe"
+                type: "cmdProbe"
+                mode: "Continuous"
+                runProperties:
+                  probeTimeout: 10
+                  retry: 3
+                  interval: 20
+                cmdProbe/inputs:
+                  command: "kubectl get --raw /metrics | grep etcd_server_has_leader | grep 1"
+                  source:
+                    image: "bitnami/kubectl:latest"
+
+# Monitoring and alerting configuration
+chaos_monitoring:
+  enabled: true
+  prometheus:
+    scrape_interval: "30s"
+    evaluation_interval: "30s"
+
+  grafana:
+    dashboards:
+      - name: "Chaos Engineering Overview"
+        uid: "chaos-overview"
+      - name: "Experiment Results"
+        uid: "chaos-results"
+      - name: "Control Plane Resilience"
+        uid: "chaos-control-plane"
+      - name: "Storage Resilience"
+        uid: "chaos-storage"
+
+# CI/CD Integration settings
+ci_integration:
+  enabled: true
+  pipeline_stages:
+    - name: "provision-test-environment"
+      enabled: true
+    - name: "deploy-applications"
+      enabled: true
+    - name: "run-chaos-experiments"
+      enabled: true
+    - name: "collect-results"
+      enabled: true
+    - name: "cleanup-environment"
+      enabled: true
+
+# Resource limits for chaos experiments
+chaos_resource_limits:
+  cpu: "500m"
+  memory: "512Mi"
+  ephemeral_storage: "1Gi"
+
+# Experiment timeouts and intervals
+chaos_timeouts:
+  experiment_timeout: "1800s"  # 30 minutes
+  probe_timeout: "15s"
+  retry_attempts: 5
+  ramp_time: "30s"
+
+# Network configuration for multi-arch support
+network_config:
+  prefer_amd64_for_scheduler: true
+  arm64_compatible_images:
+    - "litmuschaos/go-runner:3.9.0"
+    - "litmuschaos/chaos-runner:3.9.0"

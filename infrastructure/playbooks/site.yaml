@@ -1,0 +1,150 @@
+---
+# Main Site Playbook - Kubernetes Cluster Deployment
+# This playbook orchestrates the complete deployment of the K3s cluster
+# and all its components in the correct dependency order
+
+- name: "🚀 K3s Cluster Complete Deployment"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  become: false
+  vars:
+    deployment_timestamp: "{{ ansible_date_time.iso8601 }}"
+    deployment_phases:
+      - "Infrastructure Preparation"
+      - "K3s Cluster Installation"
+      - "Core Networking"
+      - "Storage & GitOps"
+      - "Security & TLS"
+      - "Observability"
+      - "Specialized Workloads"
+      - "Backup & Maintenance"
+
+  tasks:
+    - name: "Display deployment overview"
+      debug:
+        msg:
+          - "🌟 Starting Complete K3s Cluster Deployment"
+          - "Timestamp: {{ deployment_timestamp }}"
+          - "Target Architecture: Heterogeneous (1 PC + 6 Raspberry Pis)"
+          - "Deployment Phases: {{ deployment_phases | length }}"
+          - ""
+          - "📋 Deployment Phases:"
+          - "{% for phase in deployment_phases %}"
+          - "  {{ loop.index }}. {{ phase }}"
+          - "{% endfor %}"
+          - ""
+          - "⚡ Beginning automated deployment..."
+
+# Phase 2: K3s Cluster Installation
+- name: "🔧 Phase 2: K3s Cluster Installation"
+  import_playbook: k3s_cluster.yaml
+  tags: ['k3s', 'cluster', 'phase2']
+
+# Phase 3: Core Networking Components
+- name: "🌐 Phase 3: Core Networking"
+  import_playbook: networking.yaml
+  tags: ['networking', 'core', 'phase3']
+
+# Phase 4: Storage & GitOps
+- name: "💾 Phase 4: Storage & GitOps"
+  import_playbook: storage.yaml
+  tags: ['storage', 'gitops', 'phase4']
+
+# Phase 5: Security & TLS
+- name: "🔒 Phase 5: Security & TLS"
+  import_playbook: security.yaml
+  tags: ['security', 'tls', 'phase5']
+
+# Phase 6: Observability
+- name: "📊 Phase 6: Observability"
+  import_playbook: observability.yaml
+  tags: ['observability', 'monitoring', 'logging', 'phase6']
+
+# Phase 7: Specialized Workloads
+- name: "🎯 Phase 7: Specialized Workloads"
+  import_playbook: specialized.yaml
+  tags: ['specialized', 'gpu', 'chaos', 'phase7']
+
+# Phase 8: Backup & Maintenance
+- name: "🛡️ Phase 8: Backup & Maintenance"
+  import_playbook: maintenance.yaml
+  tags: ['maintenance', 'backup', 'phase8']
+
+# Final verification and summary
+- name: "✅ Final Deployment Verification"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: "Wait for all services to stabilize"
+      pause:
+        seconds: 60
+        prompt: "Allowing time for all services to fully initialize..."
+
+    - name: "Verify cluster health"
+      shell: |
+        echo "=== Cluster Overview ==="
+        kubectl get nodes -o wide
+        echo ""
+        echo "=== Namespace Summary ==="
+        kubectl get namespaces
+        echo ""
+        echo "=== Core Services Status ==="
+        kubectl get pods -A | grep -E "(metallb|ingress-nginx|longhorn|argocd|prometheus|grafana|loki)" | head -20
+        echo ""
+        echo "=== LoadBalancer Services ==="
+        kubectl get svc -A --field-selector=spec.type=LoadBalancer
+        echo ""
+        echo "=== Ingress Resources ==="
+        kubectl get ingress -A
+        echo ""
+        echo "=== Storage Classes ==="
+        kubectl get storageclass
+        echo ""
+        echo "=== Persistent Volumes ==="
+        kubectl get pv
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: final_cluster_status
+      changed_when: false
+
+    - name: "Display final cluster status"
+      debug:
+        msg: "{{ final_cluster_status.stdout_lines }}"
+
+    - name: "🎉 Deployment Complete Summary"
+      debug:
+        msg:
+          - "🎊 K3s Cluster Deployment Successfully Completed!"
+          - "Deployment Time: {{ deployment_timestamp }}"
+          - ""
+          - "🌐 Network Services:"
+          - "  • MetalLB LoadBalancer: 192.168.1.200-220"
+          - "  • Ingress-NGINX: http://192.168.1.201"
+          - "  • HAProxy K3s API: https://192.168.1.202:6443"
+          - ""
+          - "💾 Storage & GitOps:"
+          - "  • Longhorn: Distributed storage across cluster"
+          - "  • ArgoCD: https://argocd.k3s.local"
+          - ""
+          - "🔒 Security & TLS:"
+          - "  • cert-manager: Automated TLS certificates"
+          - "  • External-DNS: Automated DNS management"
+          - ""
+          - "📊 Observability:"
+          - "  • Prometheus: https://prometheus.k3s.local"
+          - "  • Grafana: https://grafana.k3s.local"
+          - "  • Loki: Centralized logging"
+          - ""
+          - "🎯 Specialized Services:"
+          - "  • GPU Support: NVIDIA device plugin"
+          - "  • Chaos Testing: LitmusChaos platform"
+          - ""
+          - "🛡️ Backup & Maintenance:"
+          - "  • etcd Snapshots: Automated daily backups"
+          - "  • Maintenance Windows: 02:00-04:00 UTC"
+          - ""
+          - "✨ Your production-ready K3s cluster is now operational!"
+          - "📚 Check individual component documentation for usage details."

@@ -1,0 +1,94 @@
+---
+- name: Install core AI/ML Python packages
+  pip:
+    name: "{{ packages }}"
+    executable: pip3
+    extra_args: --user
+    state: present
+  vars:
+    packages:
+      - torch
+      - torchvision
+      - torchaudio
+      - transformers
+      - accelerate
+      - datasets
+      - tokenizers
+  become: false
+  ignore_errors: true
+
+- name: Install AI platform packages
+  pip:
+    name: "{{ packages }}"
+    executable: pip3
+    extra_args: --user
+    state: present
+  vars:
+    packages:
+      - huggingface-hub
+      - openai
+      - anthropic
+      - langchain
+      - langchain-community
+      - langchain-openai
+      - langchain-anthropic
+  become: false
+  ignore_errors: true
+
+- name: Install vector database and search packages
+  pip:
+    name: "{{ packages }}"
+    executable: pip3
+    extra_args: --user
+    state: present
+  vars:
+    packages:
+      - chromadb
+      - sentence-transformers
+      - faiss-cpu
+      - pinecone-client
+  become: false
+  ignore_errors: true
+
+- name: Check if Ollama is already installed
+  command: ollama --version
+  register: ollama_installed
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+
+- name: Install Ollama
+  shell: |
+    curl -fsSL https://ollama.com/install.sh | sh
+  args:
+    creates: /usr/local/bin/ollama
+  when: ollama_installed.rc != 0
+
+- name: Start and enable Ollama service
+  systemd:
+    name: ollama
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  when: ollama_installed.rc != 0
+
+- name: Wait for Ollama service to be ready
+  wait_for:
+    port: 11434
+    host: localhost
+    timeout: 30
+  ignore_errors: true
+
+- name: Verify Ollama installation
+  command: ollama --version
+  register: ollama_version
+  changed_when: false
+
+- name: Display AI tools installation summary
+  debug:
+    msg:
+      - "Ollama version: {{ ollama_version.stdout }}"
+      - "AI/ML packages installed for user: {{ ansible_user_id }}"
+      - "Core packages: torch, transformers, accelerate, datasets"
+      - "Platform packages: huggingface-hub, openai, anthropic, langchain"
+      - "Vector databases: chromadb, sentence-transformers, faiss"

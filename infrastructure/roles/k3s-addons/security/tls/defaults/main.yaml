@@ -1,0 +1,105 @@
+---
+# TLS Automation Role - Default Variables (Orchestrates cert-manager + external-dns)
+
+# Component versions
+cert_manager_chart_version: "v1.15.0"
+external_dns_chart_version: "1.14.1"
+
+# Certificate configuration
+cert_issuer: "letsencrypt-staging"  # Use "letsencrypt-production" after testing
+create_wildcard_cert: false        # Set to true to create wildcard certificate
+wildcard_cert_namespace: "default" # Namespace for wildcard certificate
+organization_name: "HomeCluster"   # Organization name for certificates
+
+# Testing configuration
+create_test_service: false         # Set to true to create test service
+create_test_ingress: false         # Set to true to create test ingress
+
+# Required external variables (must be provided):
+# cloudflare_api_token: ""         # Cloudflare API token with DNS edit permissions
+# letsencrypt_email: ""            # Email for Let's Encrypt registration
+# dns_zones: []                    # List of DNS zones to manage (e.g., ["example.com"])
+# base_domain: ""                  # Base domain for wildcard certs (e.g., "example.com")
+
+# cert-manager specific configuration (inherits from cert-manager role)
+cert_manager_values:
+  installCRDs: true
+  webhook:
+    hostNetwork: false
+    securePort: 10250
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  cainjector:
+    enabled: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  startupapicheck:
+    enabled: true
+  prometheus:
+    enabled: true
+    servicemonitor:
+      enabled: true
+      prometheusInstance: kube-prometheus
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# external-dns specific configuration (inherits from external-dns role)
+external_dns_values:
+  provider: cloudflare
+  env:
+    - name: CF_API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cloudflare-api-token
+          key: api-token
+  domainFilters: []  # Will be populated with dns_zones
+  policy: sync
+  txtOwnerId: "k8s-home-cluster"
+  txtPrefix: "_external-dns"
+  interval: 1m
+  triggerLoopOnEvent: true
+  sources:
+    - service
+    - ingress
+  logLevel: info
+  logFormat: text
+  metrics:
+    enabled: true
+    port: 7979
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 128Mi
+  securityContext:
+    fsGroup: 65534
+    runAsNonRoot: true
+    runAsUser: 65534
+  serviceMonitor:
+    enabled: true
+    additionalLabels: {}
+    interval: 1m
+    scrapeTimeout: 10s
+  podSecurityContext:
+    fsGroup: 65534
+    runAsNonRoot: true
+    runAsUser: 65534
+  deploymentStrategy:
+    type: Recreate

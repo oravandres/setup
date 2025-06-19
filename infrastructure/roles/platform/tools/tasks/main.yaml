@@ -1,0 +1,22 @@
+---
+# Core Development Tools
+- import_tasks: install_git.yaml
+- import_tasks: install_python3.yaml
+- import_tasks: install_go.yaml
+- import_tasks: install_node.yaml
+
+# Developer Applications
+- import_tasks: install_jetbrains_toolbox.yaml
+- import_tasks: install_cursor.yaml
+
+# Infrastructure Tools
+- import_tasks: install_docker.yaml
+- import_tasks: install_kubectl.yaml
+- import_tasks: install_helm.yaml
+- import_tasks: install_lens.yaml
+
+# AI Tools
+- import_tasks: install_ai_tools.yaml
+
+# Browsers
+- import_tasks: install_chrome.yaml

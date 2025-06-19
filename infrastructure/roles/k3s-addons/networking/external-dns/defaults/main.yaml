@@ -1,0 +1,81 @@
+---
+# external-dns v0.14 Role - Default Variables
+
+# Chart configuration
+external_dns_chart_version: "1.14.1"  # Chart version for external-dns v0.14
+
+# external-dns Helm values
+external_dns_values:
+  provider: cloudflare
+
+  # Cloudflare configuration
+  env:
+    - name: CF_API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: cloudflare-api-token
+          key: api-token
+
+  # DNS zones to manage (must be provided externally)
+  domainFilters: []  # e.g., ["example.com", "sub.example.com"]
+
+  # External DNS configuration
+  policy: sync  # Options: sync, upsert-only
+  txtOwnerId: "k8s-home-cluster"  # Unique identifier for this cluster
+  txtPrefix: "_external-dns"      # Prefix for TXT records
+
+  # Sync configuration
+  interval: 1m
+  triggerLoopOnEvent: true
+
+  # Resource filters
+  sources:
+    - service
+    - ingress
+
+  # Logging
+  logLevel: info
+  logFormat: text
+
+  # Metrics
+  metrics:
+    enabled: true
+    port: 7979
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 128Mi
+
+  # Security context
+  securityContext:
+    fsGroup: 65534
+    runAsNonRoot: true
+    runAsUser: 65534
+
+  # Service monitor for Prometheus
+  serviceMonitor:
+    enabled: true
+    additionalLabels: {}
+    interval: 1m
+    scrapeTimeout: 10s
+
+  # Pod security
+  podSecurityContext:
+    fsGroup: 65534
+    runAsNonRoot: true
+    runAsUser: 65534
+
+  # Deployment strategy
+  deploymentStrategy:
+    type: Recreate
+
+# Cloudflare configuration (must be provided externally)
+# cloudflare_api_token: ""  # Required - set via environment or vault
+
+# DNS zones configuration (must be provided externally)
+# dns_zones: []             # Required - list of domains to manage

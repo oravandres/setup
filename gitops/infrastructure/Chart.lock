@@ -1,0 +1,24 @@
+dependencies:
+- name: cert-manager
+  repository: https://charts.jetstack.io
+  version: v1.15.0
+- name: metallb
+  repository: https://metallb.github.io/metallb
+  version: 0.14.8
+- name: ingress-nginx
+  repository: https://kubernetes.github.io/ingress-nginx
+  version: 4.11.2
+- name: argo-cd
+  repository: https://argoproj.github.io/argo-helm
+  version: 7.4.1
+- name: kube-prometheus-stack
+  repository: https://prometheus-community.github.io/helm-charts
+  version: 61.9.0
+- name: longhorn
+  repository: https://charts.longhorn.io
+  version: 1.7.1
+- name: sealed-secrets
+  repository: https://bitnami-labs.github.io/sealed-secrets
+  version: 2.15.2
+digest: sha256:9f73aef85e2ddc7e67b720ae13309e290f592cf327ce94c681478d9820426cdc
+generated: "2025-06-19T22:12:23.771105493+03:00"

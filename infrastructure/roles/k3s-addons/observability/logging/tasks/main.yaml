@@ -1,0 +1,256 @@
+---
+# Logging Stack Role - Main Tasks (Loki, Promtail)
+- name: Display logging stack configuration
+  debug:
+    msg:
+      - "=== Logging Stack Configuration ==="
+      - "Loki Chart: {{ loki_chart_version | default('6.6.4') }}"
+      - "Loki Version: {{ loki_version | default('3.1.0') }}"
+      - "Promtail Version: {{ promtail_version | default('3.1.0') }}"
+      - "Storage: {{ loki_storage_enabled | default(true) }}"
+      - "Retention: {{ loki_retention_period | default('168h') }}"
+      - "Storage Size: {{ loki_storage_size | default('50Gi') }}"
+  run_once: true
+
+- name: Add Grafana Helm repository
+  kubernetes.core.helm_repository:
+    name: grafana
+    repo_url: https://grafana.github.io/helm-charts
+    state: present
+
+- name: Update Helm repositories
+  kubernetes.core.helm:
+    name: dummy
+    chart_ref: dummy
+    release_namespace: dummy
+    state: absent
+    update_repo_cache: yes
+
+- name: Create logging namespace
+  kubernetes.core.k8s:
+    name: logging
+    api_version: v1
+    kind: Namespace
+    state: present
+    definition:
+      metadata:
+        labels:
+          name: logging
+          monitoring.coreos.com/scrape: "true"
+
+- name: Install Loki via Helm
+  kubernetes.core.helm:
+    name: loki
+    chart_ref: grafana/loki
+    release_namespace: logging
+    chart_version: "{{ loki_chart_version | default('6.6.4') }}"
+    values: "{{ loki_values }}"
+    create_namespace: true
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 600s
+
+- name: Install Promtail via Helm
+  kubernetes.core.helm:
+    name: promtail
+    chart_ref: grafana/promtail
+    release_namespace: logging
+    chart_version: "{{ promtail_chart_version | default('6.16.4') }}"
+    values: "{{ promtail_values }}"
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 300s
+
+- name: Create Loki ingress (if enabled)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: loki-ingress
+        namespace: logging
+        annotations:
+          nginx.ingress.kubernetes.io/rewrite-target: /
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+          cert-manager.io/cluster-issuer: "{{ loki_cert_issuer | default('letsencrypt-staging') }}"
+      spec:
+        ingressClassName: nginx
+        tls:
+          - hosts:
+              - "{{ loki_domain | default('loki.local') }}"
+            secretName: loki-tls
+        rules:
+          - host: "{{ loki_domain | default('loki.local') }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: loki-gateway
+                      port:
+                        number: 80
+    state: "{{ 'present' if create_loki_ingress | default(false) else 'absent' }}"
+
+- name: Create ServiceMonitor for Loki (Prometheus monitoring)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: loki-metrics
+        namespace: logging
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: loki
+            app.kubernetes.io/component: read
+        namespaceSelector:
+          matchNames:
+            - logging
+        endpoints:
+          - port: http-metrics
+            interval: 30s
+            path: /metrics
+    state: "{{ 'present' if enable_loki_monitoring | default(true) else 'absent' }}"
+
+- name: Create ServiceMonitor for Promtail (Prometheus monitoring)
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: promtail-metrics
+        namespace: logging
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: promtail
+        namespaceSelector:
+          matchNames:
+            - logging
+        endpoints:
+          - port: http-metrics
+            interval: 30s
+            path: /metrics
+    state: "{{ 'present' if enable_promtail_monitoring | default(true) else 'absent' }}"
+
+- name: Create PrometheusRules for Loki alerting
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: loki-alerts
+        namespace: logging
+        labels:
+          release: kube-prometheus-stack
+      spec:
+        groups:
+          - name: loki.rules
+            rules:
+              - alert: LokiDown
+                expr: up{job=~"loki.*"} == 0
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Loki instance {{ $labels.instance }} is down"
+                  description: "Loki instance {{ $labels.instance }} has been down for more than 5 minutes."
+
+              - alert: LokiHighIngestionRate
+                expr: rate(loki_ingester_samples_received_total[5m]) > 10000
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High log ingestion rate in Loki"
+                  description: "Loki is receiving logs at a rate of {{ $value }} samples/sec, which is above the threshold."
+
+              - alert: LokiIngesterUnhealthy
+                expr: loki_ingester_flush_queue_length > 100
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Loki ingester flush queue is growing"
+                  description: "Loki ingester has {{ $value }} items in flush queue, indicating potential performance issues."
+
+              - alert: PromtailDown
+                expr: up{job="promtail"} == 0
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Promtail instance {{ $labels.instance }} is down"
+                  description: "Promtail instance {{ $labels.instance }} has been down for more than 5 minutes."
+
+              - alert: PromtailHighErrorRate
+                expr: rate(promtail_sent_entries_total{job="promtail"}[5m]) == 0 and rate(promtail_read_lines_total{job="promtail"}[5m]) > 0
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Promtail is not sending logs to Loki"
+                  description: "Promtail on {{ $labels.instance }} is reading logs but not sending them to Loki."
+    state: present
+
+- name: Deploy logging validation script
+  template:
+    src: validate-logging.sh.j2
+    dest: /usr/local/bin/validate-logging
+    mode: '0755'
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Run logging validation
+  command: /usr/local/bin/validate-logging
+  register: logging_validation
+  delegate_to: "{{ groups['master'][0] }}"
+  run_once: true
+
+- name: Display logging validation results
+  debug:
+    var: logging_validation.stdout_lines
+  run_once: true
+
+- name: Display logging stack deployment summary
+  debug:
+    msg:
+      - "=== Logging Stack Deployment Complete ==="
+      - "✅ Loki deployed for log aggregation and storage"
+      - "✅ Promtail deployed as DaemonSet for log collection"
+      - "✅ ServiceMonitors configured for Prometheus integration"
+      - "✅ PrometheusRules configured for Loki/Promtail alerting"
+      - "✅ Grafana data source configured for Loki integration"
+      - ""
+      - "Access URLs (configure DNS or edit /etc/hosts):"
+      - "Loki API: {{ 'https://' + loki_domain | default('loki.local') if create_loki_ingress | default(false) else 'http://loki-gateway.logging.svc.cluster.local' }}"
+      - "Grafana Explore: https://{{ grafana_domain | default('grafana.local') }}/explore"
+      - ""
+      - "Storage:"
+      - "Loki: {{ loki_storage_size | default('50Gi') }} ({{ 'Enabled' if loki_storage_enabled | default(true) else 'Disabled' }})"
+      - ""
+      - "Data Retention:"
+      - "Loki: {{ loki_retention_period | default('168h') }} (7 days)"
+      - ""
+      - "Log Collection:"
+      - "Promtail collects logs from all pods in all namespaces"
+      - "Automatic Kubernetes metadata labeling"
+      - "Container and pod log parsing"
+      - ""
+      - "Next Steps:"
+      - "1. Access Grafana and explore logs via the Explore tab"
+      - "2. Create custom log-based dashboards and alerts"
+      - "3. Configure log retention policies as needed"
+      - "4. Set up log-based alerting rules in Grafana"
+  run_once: true
