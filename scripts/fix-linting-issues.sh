@@ -38,7 +38,7 @@ fix_basic_formatting() {
         sed -i 's/[[:space:]]*$//' "$file"
         
         # Ensure file ends with newline
-        if [[ -s "$file" && $(tail -c1 "$file" | wc -l) -eq 0 ]]; then
+        if [[ -n "$(tail -c1 "$file" 2>/dev/null)" ]]; then
             echo "" >> "$file"
         fi
     fi
@@ -48,9 +48,10 @@ fix_basic_formatting() {
 identify_long_lines() {
     local file="$1"
     local max_length="$2"
-    
+
     if [[ -f "$file" ]]; then
-        local long_lines=$(awk -v max="$max_length" 'length($0) > max {print NR ": " $0}' "$file")
+        local long_lines
+        long_lines=$(awk -v max="$max_length" 'length($0) > max {print NR ": " $0}' "$file")
         if [[ -n "$long_lines" ]]; then
             echo "=== Long lines in $file (>${max_length} chars) ===" >> /tmp/long_lines.log
             echo "$long_lines" >> /tmp/long_lines.log
@@ -68,12 +69,12 @@ print_status "Phase 1: Fixing infrastructure YAML files..."
 > /tmp/long_lines.log
 
 # Find all YAML files in infrastructure
-find infrastructure/ -name "*.yaml" -o -name "*.yml" | while read -r file; do
+find infrastructure/ -name "*.yaml" -o -name "*.yml" | while IFS= read -r file; do
     print_status "Processing: $file"
-    
+
     # Basic formatting fixes
     fix_basic_formatting "$file"
-    
+
     # Identify long lines (will need manual review)
     identify_long_lines "$file" 120
 done
@@ -83,12 +84,12 @@ print_success "Phase 1 completed - infrastructure YAML files processed"
 # Phase 2: Fix GitOps YAML files and specific indentation issues
 print_status "Phase 2: Fixing GitOps YAML files..."
 
-find gitops/ -name "*.yaml" -o -name "*.yml" | while read -r file; do
+find gitops/ -name "*.yaml" -o -name "*.yml" | while IFS= read -r file; do
     print_status "Processing: $file"
-    
+
     # Basic formatting fixes
     fix_basic_formatting "$file"
-    
+
     # Identify long lines
     identify_long_lines "$file" 120
 done
@@ -175,12 +176,12 @@ print_success "Phase 2 completed - GitOps YAML files processed"
 # Phase 3: Fix Markdown files
 print_status "Phase 3: Fixing Markdown files..."
 
-find docs/ -name "*.md" | while read -r file; do
+find docs/ -name "*.md" | while IFS= read -r file; do
     print_status "Processing: $file"
-    
+
     # Basic formatting fixes
     fix_basic_formatting "$file"
-    
+
     # Identify long lines
     identify_long_lines "$file" 120
 done
@@ -202,22 +203,23 @@ print_status "Phase 4: Applying basic markdown formatting fixes..."
 # Function to fix common markdown issues
 fix_markdown_formatting() {
     local file="$1"
-    
+
     if [[ -f "$file" ]]; then
         # Create a temporary file for processing
-        local temp_file=$(mktemp)
-        
+        local temp_file
+        temp_file=$(mktemp)
+
         # Read the file line by line and apply fixes
         local prev_line=""
         local next_line=""
         local line_num=0
-        
+
         while IFS= read -r line || [[ -n "$line" ]]; do
             ((line_num++))
-            
+
             # Get next line for context
-            next_line=$(sed -n "$((line_num + 1))p" "$file")
-            
+            next_line=$(sed -n "$((line_num + 1))p" "$file" 2>/dev/null || true)
+
             # Fix headings - ensure blank line before and after
             if [[ "$line" =~ ^#{1,6}[[:space:]] ]]; then
                 # Add blank line before heading if previous line is not blank
@@ -245,17 +247,17 @@ fix_markdown_formatting() {
             else
                 echo "$line" >> "$temp_file"
             fi
-            
+
             prev_line="$line"
         done < "$file"
-        
+
         # Replace original file with processed version
         mv "$temp_file" "$file"
     fi
 }
 
 # Apply markdown fixes to all markdown files
-find docs/ -name "*.md" | while read -r file; do
+find docs/ -name "*.md" | while IFS= read -r file; do
     print_status "Applying markdown formatting to: $file"
     fix_markdown_formatting "$file"
 done
@@ -277,9 +279,10 @@ print_success "✅ Applied basic markdown formatting fixes"
 if [[ -s /tmp/long_lines.log ]]; then
     print_warning "⚠️  Some lines exceed the 120-character limit and need manual review:"
     print_warning "   Check /tmp/long_lines.log for details"
-    
+
     # Count files with long lines
-    long_line_files=$(grep "^===" /tmp/long_lines.log | wc -l)
+    local long_line_files
+    long_line_files=$(grep -c "^===" /tmp/long_lines.log || true)
     print_warning "   Files with long lines: $long_line_files"
 fi
 
@@ -291,4 +294,4 @@ echo "   markdownlint docs/ *.md"
 echo "   ansible-lint infrastructure/"
 echo "3. Commit the changes"
 
-print_success "Linting fixes completed!" 
+print_success "Linting fixes completed!"
