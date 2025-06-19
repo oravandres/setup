@@ -1,0 +1,99 @@
+---
+# Raspberry Pi Shutdown Playbook
+# Gracefully shutdown all Raspberry Pi nodes in all environments
+
+- name: "🚨 Graceful Shutdown - All Raspberry Pi Nodes"
+  hosts: raspberry_pi
+  become: true
+  gather_facts: true
+  serial: 1  # Shutdown one at a time to avoid cluster issues
+  tags: ['shutdown', 'maintenance']
+  
+  pre_tasks:
+    - name: "Display shutdown target"
+      debug:
+        msg:
+          - "🚨 SHUTDOWN WARNING: {{ inventory_hostname }}"
+          - "Host: {{ ansible_host }}"
+          - "Architecture: {{ node_architecture | default('unknown') }}"
+          - "Type: {{ node_type | default('unknown') }}"
+
+    - name: "Confirm shutdown intent"
+      pause:
+        prompt: "Are you sure you want to shutdown {{ inventory_hostname }}? Press ENTER to continue or Ctrl+C to abort"
+      when: not ansible_check_mode
+      run_once: false
+
+  tasks:
+    - name: "Drain Kubernetes node (if part of cluster)"
+      shell: |
+        kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data --force --timeout=300s
+      delegate_to: localhost
+      become: false
+      ignore_errors: true
+      when: 
+        - node_type is defined
+        - node_type in ['control_plane', 'worker']
+
+    - name: "Stop k3s service gracefully"
+      systemd:
+        name: k3s
+        state: stopped
+      ignore_errors: true
+      when: node_type is defined
+
+    - name: "Stop k3s-agent service gracefully" 
+      systemd:
+        name: k3s-agent
+        state: stopped
+      ignore_errors: true
+      when: node_type == 'worker'
+
+    - name: "Sync filesystem"
+      command: sync
+      
+    - name: "Final shutdown"
+      shell: "shutdown -h now"
+      async: 1
+      poll: 0
+      ignore_errors: true
+
+  post_tasks:
+    - name: "Wait for shutdown confirmation"
+      wait_for_connection:
+        timeout: 10
+      ignore_errors: true
+      
+    - name: "Shutdown notification"
+      debug:
+        msg: "{{ inventory_hostname }} shutdown initiated"
+
+- name: "🔍 Verify All Pi Nodes Are Down"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tags: ['verify']
+  
+  tasks:
+    - name: "Check Pi node connectivity"
+      wait_for:
+        host: "{{ hostvars[item]['ansible_host'] }}"
+        port: 22
+        timeout: 10
+        state: stopped
+      loop: "{{ groups['raspberry_pi'] | default([]) }}"
+      ignore_errors: true
+      register: pi_status
+
+    - name: "Display shutdown status"
+      debug:
+        msg:
+          - "🚨 Raspberry Pi Shutdown Summary:"
+          - "================================"
+          - "{% for result in pi_status.results %}"
+          - "{{ hostvars[result.item]['inventory_hostname'] }}: {{ 'SHUTDOWN' if result.failed else 'STILL RUNNING' }}"
+          - "{% endfor %}"
+          - ""
+          - "⚠️  All Raspberry Pi nodes have been shutdown!"
+          - "💡 To restart: Power cycle each device manually" 

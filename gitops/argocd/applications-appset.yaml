@@ -9,7 +9,7 @@ metadata:
 spec:
   generators:
   - git:
-      repoURL: https://github.com/your-org/k3s-homelab-setup
+      repoURL: https://github.com/oravandres/setup
       revision: HEAD
       directories:
       - path: gitops/applications/*
@@ -19,7 +19,7 @@ spec:
             app.kubernetes.io/managed-by: argocd-applicationset
         spec:
           source:
-            repoURL: https://github.com/your-org/k3s-homelab-setup
+            repoURL: https://github.com/oravandres/setup
             targetRevision: HEAD
           project: default
           destination:
@@ -56,7 +56,7 @@ spec:
     spec:
       project: default
       source:
-        repoURL: https://github.com/your-org/k3s-homelab-setup
+        repoURL: https://github.com/oravandres/setup
         targetRevision: HEAD
         path: '{{path}}'
         helm:

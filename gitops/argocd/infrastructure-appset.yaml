@@ -33,7 +33,7 @@ spec:
     spec:
       project: default
       source:
-        repoURL: https://github.com/your-org/k3s-homelab-setup
+        repoURL: https://github.com/oravandres/setup
         targetRevision: HEAD
         path: gitops/infrastructure
         helm:
