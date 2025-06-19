@@ -16,7 +16,7 @@
 - import_tasks: install_lens.yaml
 
 # AI Tools
-- import_tasks: install_ai_tools.yaml 
+- import_tasks: install_ai_tools.yaml
 
 # Browsers
 - import_tasks: install_chrome.yaml

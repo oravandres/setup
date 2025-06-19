@@ -84,7 +84,7 @@
   loop: "{{ control_plane_experiments }}"
   when: enable_control_plane_tests | default(true)
 
-- name: Deploy storage chaos experiments  
+- name: Deploy storage chaos experiments
   kubernetes.core.k8s:
     definition: "{{ item }}"
     state: present
@@ -124,15 +124,15 @@
                   - |
                     set -e
                     echo "Starting scheduled chaos experiments..."
-                    
+
                     # Function to run experiment and wait for completion
                     run_experiment() {
                       local experiment_name=$1
                       echo "Running experiment: $experiment_name"
-                      
+
                       # Apply the experiment
                       kubectl apply -f /experiments/$experiment_name.yaml
-                      
+
                       # Wait for completion (max 30 minutes)
                       kubectl wait --for=condition=Complete \
                         chaosengine/$experiment_name \
@@ -142,32 +142,32 @@
                         kubectl describe chaosengine/$experiment_name
                         return 1
                       }
-                      
+
                       # Get results
                       kubectl get chaosresult -l chaosUID=$(kubectl get chaosengine/$experiment_name -o jsonpath='{.metadata.uid}') -o yaml
-                      
+
                       echo "Experiment $experiment_name completed successfully"
                     }
-                    
+
                     # Run experiments based on configuration
                     {% if enable_control_plane_tests | default(true) %}
                     echo "=== Control Plane Resilience Tests ==="
                     run_experiment "node-restart-master"
-                    run_experiment "etcd-kill-experiment" 
+                    run_experiment "etcd-kill-experiment"
                     run_experiment "api-server-kill"
                     {% endif %}
-                    
+
                     {% if enable_storage_tests | default(true) %}
                     echo "=== Storage Resilience Tests ==="
                     run_experiment "longhorn-node-restart"
                     run_experiment "disk-fill-storage"
                     {% endif %}
-                    
+
                     {% if enable_etcd_backup_tests | default(true) %}
                     echo "=== etcd Backup Validation Tests ==="
                     run_experiment "etcd-backup-restore-validation"
                     {% endif %}
-                    
+
                     echo "All scheduled chaos experiments completed successfully!"
                   volumeMounts:
                   - name: experiments-config
@@ -266,7 +266,7 @@
                 annotations:
                   summary: "Chaos experiment failed"
                   description: "Chaos experiment {{ $labels.experiment_name }} failed in namespace {{ $labels.namespace }}"
-              
+
               - alert: ChaosExperimentTimeout
                 expr: chaos_experiment_duration_seconds > 1800  # 30 minutes
                 for: 5m
@@ -275,7 +275,7 @@
                 annotations:
                   summary: "Chaos experiment taking too long"
                   description: "Chaos experiment {{ $labels.experiment_name }} has been running for over 30 minutes"
-              
+
               - alert: HighChaosExperimentFailureRate
                 expr: rate(chaos_experiment_failed_total[1h]) > 0.5
                 for: 10m
@@ -356,4 +356,4 @@
       - "3. Configure AlertManager notifications for experiment failures"
       - "4. Create Grafana dashboards for chaos experiment monitoring"
       - "5. Integrate with CI/CD pipeline for automated testing"
-  run_once: true 
+  run_once: true

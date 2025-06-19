@@ -24,4 +24,4 @@
       - "Helm installation completed"
       - "Version: {{ helm_version_check.stdout if helm_version_check.stdout is defined else 'Unknown' }}"
       - "Executable: /usr/local/bin/helm"
-      - "Helm is ready for Kubernetes package management" 
+      - "Helm is ready for Kubernetes package management"

@@ -100,7 +100,7 @@
   register: argocd_server_pods
   until: >
     argocd_server_pods.resources | length > 0 and
-    (argocd_server_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (argocd_server_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) ==
     (argocd_server_pods.resources | length)
   retries: 30
   delay: 10
@@ -116,7 +116,7 @@
   register: argocd_controller_pods
   until: >
     argocd_controller_pods.resources | length > 0 and
-    (argocd_controller_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (argocd_controller_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) ==
     (argocd_controller_pods.resources | length)
   retries: 30
   delay: 10
@@ -217,4 +217,4 @@
       - "2. Connect Git repositories for GitOps"
       - "3. Create Application resources for your deployments"
       - "4. Configure Image Updater for automatic updates"
-  run_once: true 
+  run_once: true

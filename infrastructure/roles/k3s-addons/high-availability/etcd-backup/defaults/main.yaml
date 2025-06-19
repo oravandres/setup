@@ -73,4 +73,4 @@ rclone_gcs_config: |
 # Backup validation settings
 validation_enabled: true            # Enable backup validation tests
 validation_test_restore: false      # Perform test restore validation (requires separate cluster)
-validation_retention_check: true    # Validate retention policy enforcement 
+validation_retention_check: true    # Validate retention policy enforcement

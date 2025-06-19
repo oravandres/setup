@@ -5,7 +5,7 @@
   gather_facts: true
   vars:
     kubeconfig_path: "{{ ansible_env.HOME }}/.kube/k3s-config"
-  
+
   tasks:
     - name: Verify K3s cluster is accessible
       shell: kubectl get nodes --no-headers | wc -l
@@ -231,7 +231,7 @@
           ✅ Ingress NGINX Status:
           - LoadBalancer IP: {{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
           - Test URL: http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
-          
+
           ✅ Task 2 Complete: Ingress NGINX Controller deployed successfully!
 
     - name: Test ingress connectivity
@@ -246,4 +246,4 @@
     - name: Clean up temporary values file
       file:
         path: /tmp/ingress-nginx-values.yaml
-        state: absent 
+        state: absent

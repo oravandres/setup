@@ -27,7 +27,7 @@
     content: |
       # Longhorn configuration optimized for heterogeneous cluster (1 PC + 6 Pis)
       # Modern Kubernetes-native distributed storage
-      
+
       # Default settings
       defaultSettings:
         # Storage settings optimized for USB SSDs
@@ -37,34 +37,34 @@
         replicaAutoBalance: best-effort
         storageOverProvisioningPercentage: 200
         storageMinimalAvailablePercentage: 25
-        
+
         # Performance settings for mixed hardware
         upgradeChecker: true
         defaultReplicaCount: 3  # Task 6: Use 3 replicas for high availability
         defaultLonghornStaticStorageClass: longhorn
         backupstorePollInterval: 300
-        
+
         # Node settings
         createDefaultDiskLabeledNodes: true
         defaultDataLocality: best-effort
         nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
-        
+
         # Recovery settings
         autoSalvage: true
         autoDeletePodWhenVolumeDetachedUnexpectedly: true
         disableSchedulingOnCordonedNode: true
         replicaReplenishmentWaitInterval: 600
-        
+
         # Snapshot settings
         concurrentAutomaticEngineUpgradePerNodeLimit: 1
         backupCompressionMethod: lz4
-        
+
         # CSI settings
         csiAttacherWorkerThreads: 8
         csiProvisionerWorkerThreads: 8
         csiResizerWorkerThreads: 8
         csiSnapshotterWorkerThreads: 8
-      
+
       # Longhorn Manager (main controller)
       longhornManager:
         # Resource limits for manager
@@ -75,10 +75,10 @@
           requests:
             cpu: 500m
             memory: 1Gi
-        
+
         # Node affinity - can run anywhere but prefer stable nodes
         nodeSelector: {}
-        
+
         # Tolerations for mixed architecture
         tolerations:
           - key: "arm"
@@ -89,10 +89,10 @@
             operator: "Equal"
             value: "arm64"
             effect: "NoSchedule"
-            
+
         # Priority class for system stability
         priorityClass: system-cluster-critical
-      
+
       # Longhorn Driver (CSI)
       longhornDriver:
         # Resource limits for CSI driver
@@ -103,7 +103,7 @@
           requests:
             cpu: 100m
             memory: 256Mi
-        
+
         # Tolerations to run on all nodes
         tolerations:
           - key: node-role.kubernetes.io/master
@@ -120,7 +120,7 @@
             operator: "Equal"
             value: "arm64"
             effect: "NoSchedule"
-      
+
       # Longhorn UI
       longhornUI:
         # Resource limits for UI
@@ -131,10 +131,10 @@
           requests:
             cpu: 100m
             memory: 256Mi
-        
+
         # Node affinity - prefer PC for better performance
         nodeSelector: {}
-        
+
         # Tolerations for mixed architecture
         tolerations:
           - key: "arm"
@@ -145,14 +145,14 @@
             operator: "Equal"
             value: "arm64"
             effect: "NoSchedule"
-      
+
       # Storage class configuration
       persistence:
         defaultClass: true
         defaultClassReplicaCount: 3  # Task 6: 3 replicas for default StorageClass
         defaultDataLocality: best-effort
         reclaimPolicy: Delete
-        
+
       # CSI Driver settings
       csi:
         kubeletRootDir: /var/lib/kubelet
@@ -160,18 +160,18 @@
         provisionerReplicaCount: 2
         resizerReplicaCount: 2
         snapshotterReplicaCount: 2
-        
+
       # Service configuration
       service:
         ui:
           type: ClusterIP
         manager:
           type: ClusterIP
-          
+
       # Ingress (disabled, using NodePort)
       ingress:
         enabled: false
-        
+
       # Enable metrics for monitoring
       metrics:
         serviceMonitor:
@@ -225,11 +225,11 @@
                   # Install iscsi-initiator-utils on the host
                   nsenter --mount=/proc/1/ns/mnt --net=/proc/1/ns/net -- \
                   sh -c 'apt-get update && apt-get install -y open-iscsi || yum install -y iscsi-initiator-utils || apk add --no-cache open-iscsi'
-                  
+
                   # Enable and start iscsid service
                   nsenter --mount=/proc/1/ns/mnt --net=/proc/1/ns/net -- \
                   sh -c 'systemctl enable iscsid && systemctl start iscsid' || true
-                  
+
                   # Keep container running
                   sleep infinity
               securityContext:
@@ -344,11 +344,11 @@
       - Manager pods running: {{ longhorn_manager_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
       - UI pods running: {{ longhorn_ui_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
       - Storage class created: {{ 'Yes' if longhorn_sc.resources else 'No' }}
-      
+
       🌐 Access Information:
       - Longhorn UI: http://{{ node_ip.stdout }}:30070
       - Storage class: longhorn ({{ 'default' if longhorn_sc.resources and longhorn_sc.resources[0].metadata.annotations['storageclass.kubernetes.io/is-default-class'] == 'true' else 'not default' }})
-      
+
       📊 Task 6 Configuration (v1.7 with 3 replicas):
       - Version: Longhorn v1.7.x (latest production release)
       - Default replicas: 3 (high availability - can lose 2 nodes)
@@ -357,7 +357,7 @@
       - CSI-compliant dynamic provisioning
       - Cross-node data availability
       - Performance isolation per workload
-      
+
       🔧 Storage Features:
       - Replica auto-balance across nodes
       - Storage over-provisioning: 200%
@@ -365,19 +365,19 @@
       - Automatic volume recovery
       - LZ4 compression for backups
       - NVMe storage pool ready for optimization
-      
+
       📝 Next Steps:
       1. Validate installation: /usr/local/bin/validate-longhorn
       2. Access Longhorn UI to monitor storage
       3. Configure NVMe storage pools for high-performance workloads
       4. Set up backup targets (S3, NFS, etc.) - see Task 9
       5. Test stateful applications with 3-replica volumes
-      
+
       💡 NVMe Optimization:
       - Add NVMe mount paths via Longhorn UI
       - Tag NVMe disks for performance workloads
       - Use disk selectors for workload-specific placement
-      
+
       🛠️ Validation:
       - Run: /usr/local/bin/validate-longhorn
       - Tests 3-replica creation and distribution
@@ -407,4 +407,4 @@
 - name: Clean up temporary values file
   file:
     path: /tmp/longhorn-values.yaml
-    state: absent 
+    state: absent

@@ -19,7 +19,7 @@
       - "Observability"
       - "Specialized Workloads"
       - "Backup & Maintenance"
-  
+
   tasks:
     - name: "Display deployment overview"
       debug:
@@ -147,4 +147,4 @@
           - "  • Maintenance Windows: 02:00-04:00 UTC"
           - ""
           - "✨ Your production-ready K3s cluster is now operational!"
-          - "📚 Check individual component documentation for usage details." 
+          - "📚 Check individual component documentation for usage details."

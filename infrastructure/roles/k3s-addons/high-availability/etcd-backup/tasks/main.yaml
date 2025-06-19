@@ -67,9 +67,9 @@
         backup.sh: |
           #!/bin/bash
           set -euo pipefail
-          
+
           echo "=== K3s etcd Backup Started at $(date) ==="
-          
+
           # Configuration
           SNAPSHOT_DIR="/var/lib/rancher/k3s/server/db/snapshots"
           WORK_DIR="/tmp/backup-work"
@@ -78,40 +78,40 @@
           BUCKET_NAME="{{ backup_bucket_name }}"
           RETENTION_DAILY={{ daily_retention_days | default(7) }}
           RETENTION_WEEKLY={{ weekly_retention_days | default(30) }}
-          
+
           # Create work directory
           mkdir -p "$WORK_DIR"
           cd "$WORK_DIR"
-          
+
           # Generate snapshot name with timestamp
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           SNAPSHOT_NAME="k3s-etcd-snapshot-${TIMESTAMP}"
-          
+
           echo "Creating etcd snapshot: $SNAPSHOT_NAME"
-          
+
           # Create etcd snapshot using K3s
           /usr/local/bin/k3s etcd-snapshot save --name "$SNAPSHOT_NAME"
-          
+
           # Find the created snapshot
           SNAPSHOT_FILE=$(find "$SNAPSHOT_DIR" -name "${SNAPSHOT_NAME}*" -type f | head -1)
-          
+
           if [ -z "$SNAPSHOT_FILE" ]; then
             echo "ERROR: Snapshot file not found!"
             exit 1
           fi
-          
+
           echo "Found snapshot: $SNAPSHOT_FILE"
-          
+
           # Copy snapshot to work directory
           cp "$SNAPSHOT_FILE" "$WORK_DIR/snapshot.db"
-          
+
           # Encrypt snapshot
           echo "Encrypting snapshot..."
           gpg --batch --yes --passphrase-file "$PASSPHRASE_FILE" \
               --symmetric --cipher-algo AES256 \
               --output "snapshot-encrypted.db.gpg" \
               "snapshot.db"
-          
+
           # Determine if this is a weekly backup (Sunday = day 0)
           DAY_OF_WEEK=$(date +%w)
           if [ "$DAY_OF_WEEK" -eq 0 ]; then
@@ -119,74 +119,74 @@
           else
             BACKUP_TYPE="daily"
           fi
-          
+
           # Upload to remote storage
           REMOTE_PATH="${BUCKET_NAME}/k3s-etcd-backups/${BACKUP_TYPE}/snapshot-${BACKUP_TYPE}-${TIMESTAMP}.db.gpg"
           echo "Uploading to: $REMOTE_PATH"
-          
+
           rclone --config="$RCLONE_CONFIG" copy "snapshot-encrypted.db.gpg" "minio:/$REMOTE_PATH"
-          
+
           if [ $? -eq 0 ]; then
             echo "✅ Backup uploaded successfully"
           else
             echo "❌ Backup upload failed"
             exit 1
           fi
-          
+
           # Clean up local files
           rm -f snapshot.db snapshot-encrypted.db.gpg
-          
+
           # Apply retention policies
           echo "Applying retention policies..."
-          
+
           # Clean up daily backups older than retention period
           echo "Cleaning up daily backups older than $RETENTION_DAILY days..."
           rclone --config="$RCLONE_CONFIG" delete "minio:/${BUCKET_NAME}/k3s-etcd-backups/daily/" \
             --min-age "${RETENTION_DAILY}d" || true
-          
+
           # Clean up weekly backups older than retention period but keep at least 4 recent
           echo "Cleaning up weekly backups older than $RETENTION_WEEKLY days..."
           WEEKLY_FILES=$(rclone --config="$RCLONE_CONFIG" lsjson "minio:/${BUCKET_NAME}/k3s-etcd-backups/weekly/" | \
             jq -r 'sort_by(.ModTime) | reverse | .[4:] | .[] | select((.ModTime | fromdateiso8601) < (now - ('"$RETENTION_WEEKLY"' * 86400))) | .Name')
-          
+
           for file in $WEEKLY_FILES; do
             if [ -n "$file" ]; then
               echo "Deleting old weekly backup: $file"
               rclone --config="$RCLONE_CONFIG" delete "minio:/${BUCKET_NAME}/k3s-etcd-backups/weekly/$file" || true
             fi
           done
-          
+
           echo "=== K3s etcd Backup Completed at $(date) ==="
-        
+
         restore.sh: |
           #!/bin/bash
           set -euo pipefail
-          
+
           echo "=== K3s etcd Restore Script ==="
           echo "Usage: $0 <backup-filename> [restore-path]"
           echo ""
           echo "This script downloads and prepares a backup for manual restore."
           echo "The actual restore must be performed manually on the control plane nodes."
           echo ""
-          
+
           if [ $# -lt 1 ]; then
             echo "Error: Please specify backup filename"
             echo "Available backups:"
             rclone --config="/etc/rclone-config/rclone.conf" ls "minio:/{{ backup_bucket_name }}/k3s-etcd-backups/"
             exit 1
           fi
-          
+
           BACKUP_FILE="$1"
           RESTORE_PATH="${2:-/tmp/restore}"
           PASSPHRASE_FILE="/etc/backup-secrets/passphrase"
           RCLONE_CONFIG="/etc/rclone-config/rclone.conf"
           BUCKET_NAME="{{ backup_bucket_name }}"
-          
+
           mkdir -p "$RESTORE_PATH"
           cd "$RESTORE_PATH"
-          
+
           echo "Downloading backup: $BACKUP_FILE"
-          
+
           # Try to find the backup in daily or weekly directories
           if rclone --config="$RCLONE_CONFIG" copy "minio:/${BUCKET_NAME}/k3s-etcd-backups/daily/$BACKUP_FILE" . 2>/dev/null; then
             echo "Found in daily backups"
@@ -196,11 +196,11 @@
             echo "ERROR: Backup file not found in daily or weekly directories"
             exit 1
           fi
-          
+
           echo "Decrypting backup..."
           gpg --batch --yes --passphrase-file "$PASSPHRASE_FILE" \
               --decrypt --output "restored-snapshot.db" "$BACKUP_FILE"
-          
+
           echo ""
           echo "✅ Backup prepared for restore at: $RESTORE_PATH/restored-snapshot.db"
           echo ""
@@ -375,4 +375,4 @@
       - "- List backups: rclone ls minio:/{{ backup_bucket_name }}/k3s-etcd-backups/"
       - "- Trigger backup: kubectl create job -n etcd-backup manual-backup --from=cronjob/etcd-backup"
       - "- Restore backup: kubectl apply -f restore-job.yaml (with backup filename)"
-  run_once: true 
+  run_once: true

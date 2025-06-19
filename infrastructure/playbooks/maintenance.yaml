@@ -7,7 +7,7 @@
   become: true
   gather_facts: true
   tags: ['maintenance', 'backup', 'etcd']
-  
+
   tasks:
     - name: "Include etcd-backup role"
       include_role:
@@ -20,7 +20,7 @@
   gather_facts: true
   run_once: true
   tags: ['maintenance', 'ha-testing']
-  
+
   tasks:
     - name: "Include HA testing role"
       include_role:
@@ -33,7 +33,7 @@
   gather_facts: false
   become: false
   tags: ['verify']
-  
+
   tasks:
     - name: "Check etcd backup cronjobs"
       shell: |
@@ -68,4 +68,4 @@
           - "⏰ Backup Schedule:"
           - "  • Daily snapshots at 02:00 UTC"
           - "  • Weekly full backups"
-          - "  • 30-day retention policy" 
+          - "  • 30-day retention policy"

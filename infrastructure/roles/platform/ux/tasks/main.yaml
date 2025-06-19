@@ -223,20 +223,20 @@
     block: |
       # Custom configuration
       export DEFAULT_USER="$USER"
-      
+
       # Enable command auto-correction
       ENABLE_CORRECTION="true"
-      
+
       # Enable command execution time display for long commands
       HIST_STAMPS="yyyy-mm-dd"
-      
+
       # Autosuggestions configuration
       ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#666666"
       ZSH_AUTOSUGGEST_STRATEGY=(history completion)
-      
+
       # Bat (better cat) configuration
       export BAT_THEME="TwoDark"
-      
+
       # Source aliases file
       if [ -f ~/.aliases ]; then
           source ~/.aliases
@@ -266,7 +266,7 @@
 
 - name: Display zsh setup summary
   debug:
-    msg: 
+    msg:
       - "Oh My Zsh installed at: {{ user_home.stdout }}/.oh-my-zsh"
       - "Plugins installed: git, zsh-autosuggestions, zsh-syntax-highlighting, zsh-bat, docker, kubectl, helm, npm, node, python, pip"
       - "Theme: robbyrussell"

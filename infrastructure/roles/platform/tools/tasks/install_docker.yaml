@@ -112,4 +112,4 @@
       - "Docker version: {{ docker_version.stdout }}"
       - "Docker Compose plugin: {{ docker_compose_plugin_version.stdout | default('Not available') }}"
       - "User {{ ansible_user_id }} added to docker group"
-      - "Note: You may need to log out and back in for group membership to take effect" 
+      - "Note: You may need to log out and back in for group membership to take effect"

@@ -16,7 +16,7 @@
     that:
       - cloudflare_api_token is defined
       - cloudflare_api_token | length > 0
-      - letsencrypt_email is defined  
+      - letsencrypt_email is defined
       - letsencrypt_email | length > 0
       - dns_zones is defined
       - dns_zones | length > 0
@@ -46,12 +46,12 @@
   register: cert_manager_status
   until: >
     cert_manager_status.resources | length > 0 and
-    (cert_manager_status.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (cert_manager_status.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) ==
     (cert_manager_status.resources | length)
   retries: 30
   delay: 10
 
-- name: Wait for external-dns to be fully ready  
+- name: Wait for external-dns to be fully ready
   kubernetes.core.k8s_info:
     api_version: v1
     kind: Pod
@@ -61,7 +61,7 @@
   register: external_dns_status
   until: >
     external_dns_status.resources | length > 0 and
-    (external_dns_status.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == 
+    (external_dns_status.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) ==
     (external_dns_status.resources | length)
   retries: 30
   delay: 10
@@ -151,4 +151,4 @@
       - "2. Create Ingress resources with TLS annotations"
       - "3. Monitor certificate issuance in cert-manager logs"
       - "4. Check DNS record creation in external-dns logs"
-  run_once: true 
+  run_once: true

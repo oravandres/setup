@@ -106,4 +106,4 @@ metallb_service_configs:
   grafana:
     pool: "default-pool"
     sharing_key: "monitoring"
-    allow_shared_ip: true 
+    allow_shared_ip: true

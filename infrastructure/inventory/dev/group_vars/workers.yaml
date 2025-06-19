@@ -75,4 +75,4 @@ gpu_runtime: "nvidia"
 
 # Taints and tolerations (none by default for workers)
 node_taints: []
-node_tolerations: [] 
+node_tolerations: []

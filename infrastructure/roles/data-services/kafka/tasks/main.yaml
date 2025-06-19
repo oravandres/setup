@@ -7,7 +7,7 @@
       kubectl label nodes $PC_NODE node-type=pc --overwrite
       kubectl label nodes $PC_NODE kafka-preferred=true --overwrite
     fi
-    
+
     # Label Pi nodes
     kubectl get nodes -o wide --no-headers | grep -E 'arm64|aarch64' | while read line; do
       NODE=$(echo $line | awk '{print $1}')
@@ -35,15 +35,15 @@
   copy:
     content: |
       # Kafka configuration optimized for heterogeneous cluster (1 PC + 6 Pis)
-      
+
       # Replica count - TRUE HA setup
       replicaCount: 3  # 3 brokers for true HA (can lose 1, still have 2)
-      
+
       persistence:
         enabled: true
         size: 50Gi  # Conservative for USB SSDs
         storageClass: "local-path"
-      
+
       # Kafka resources - optimized for mixed hardware
       resources:
         limits:
@@ -52,12 +52,12 @@
         requests:
           cpu: 500m       # Ensures scheduling works on Pis
           memory: 1Gi     # Fits comfortably on 8GB Pis
-      
+
       # Pod disruption budget - HA configuration
       podDisruptionBudget:
         create: true
         minAvailable: 2  # Always keep at least 2 brokers running
-      
+
       # HA-focused affinity rules
       affinity:
         nodeAffinity:
@@ -88,11 +88,11 @@
                       operator: In
                       values: ["kafka"]
                 topologyKey: node-type
-      
+
       # Optional: Uncomment to force Kafka only on PC
       # nodeSelector:
       #   kubernetes.io/arch: "amd64"
-      
+
       # Tolerations for mixed architecture
       tolerations:
         - key: "arm"
@@ -103,7 +103,7 @@
           operator: "Equal"
           value: "arm64"
           effect: "NoSchedule"
-      
+
       # ZooKeeper configuration - Pi-friendly
       zookeeper:
         enabled: true
@@ -119,7 +119,7 @@
           requests:
             cpu: 200m
             memory: 256Mi
-        
+
         # ZooKeeper prefers masters (more stable)
         affinity:
           nodeAffinity:
@@ -144,23 +144,23 @@
                         operator: In
                         values: ["zookeeper"]
                   topologyKey: kubernetes.io/hostname
-      
+
       # External access configuration
       externalAccess:
         enabled: false
         service:
           type: ClusterIP
-      
+
       # JVM settings optimized for mixed hardware
       heapOpts: "-Xmx1024m -Xms512m"  # Conservative heap for Pis
-      
+
       # Metrics and monitoring
       metrics:
         kafka:
           enabled: true
         jmx:
           enabled: true
-      
+
       # Log retention suitable for USB SSD storage
       logRetentionHours: 168  # 7 days instead of default
       logSegmentBytes: 134217728  # 128MB segments

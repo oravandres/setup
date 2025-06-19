@@ -34,7 +34,7 @@ litmus_values:
         limits:
           memory: "512Mi"
           cpu: "550m"
-    
+
     server:
       resources:
         requests:
@@ -43,7 +43,7 @@ litmus_values:
         limits:
           memory: "512Mi"
           cpu: "550m"
-      
+
       authServer:
         resources:
           requests:
@@ -112,7 +112,7 @@ chaos_experiments:
       type: "pod-delete"
       target: "kube-apiserver"
       duration: "60s"
-  
+
   # Storage experiments
   storage:
     - name: "longhorn-node-restart"
@@ -123,7 +123,7 @@ chaos_experiments:
       type: "disk-fill"
       target: "longhorn"
       duration: "300s"
-  
+
   # Backup validation experiments
   backup:
     - name: "etcd-backup-restore-validation"
@@ -432,14 +432,14 @@ etcd_backup_experiments:
                 - name: EXPERIMENT_COMMAND
                   value: |
                     apk add --no-cache curl kubectl
-                    
+
                     echo "=== etcd Backup Restore Validation ==="
-                    
+
                     # Step 1: Create test data
                     echo "Creating test namespace and resources..."
                     kubectl create namespace chaos-test-backup || true
                     kubectl create configmap test-data --from-literal=test-key=test-value -n chaos-test-backup
-                    
+
                     # Step 2: Trigger backup
                     echo "Triggering etcd backup..."
                     kubectl exec -n kube-system $(kubectl get pods -n kube-system -l component=etcd -o jsonpath='{.items[0].metadata.name}') -- \
@@ -448,25 +448,25 @@ etcd_backup_experiments:
                       --cert=/var/lib/rancher/k3s/server/tls/etcd/server-client.crt \
                       --key=/var/lib/rancher/k3s/server/tls/etcd/server-client.key \
                       snapshot save /var/lib/rancher/k3s/server/db/snapshots/chaos-test-backup.db
-                    
+
                     # Step 3: Verify backup exists
                     echo "Verifying backup file exists..."
                     kubectl exec -n kube-system $(kubectl get pods -n kube-system -l component=etcd -o jsonpath='{.items[0].metadata.name}') -- \
                       ls -la /var/lib/rancher/k3s/server/db/snapshots/chaos-test-backup.db
-                    
+
                     # Step 4: Simulate data loss by deleting test resources
                     echo "Simulating data loss..."
                     kubectl delete namespace chaos-test-backup --wait=true
-                    
+
                     # Step 5: Verify data is gone
                     echo "Verifying test data is deleted..."
                     kubectl get namespace chaos-test-backup && exit 1 || echo "Data successfully deleted"
-                    
+
                     # Step 6: Restore simulation (in real scenario, this would restore from backup)
                     echo "Simulating restore process..."
                     kubectl create namespace chaos-test-backup
                     kubectl create configmap test-data --from-literal=test-key=test-value -n chaos-test-backup
-                    
+
                     # Step 7: Verify restore
                     echo "Verifying restore..."
                     test_value=$(kubectl get configmap test-data -n chaos-test-backup -o jsonpath='{.data.test-key}')
@@ -476,10 +476,10 @@ etcd_backup_experiments:
                       echo "❌ Backup restore validation failed!"
                       exit 1
                     fi
-                    
+
                     # Cleanup
                     kubectl delete namespace chaos-test-backup --wait=true
-                    
+
                     echo "=== etcd Backup Restore Validation Complete ==="
             probe:
               - name: "cluster-health-probe"
@@ -511,7 +511,7 @@ chaos_monitoring:
   prometheus:
     scrape_interval: "30s"
     evaluation_interval: "30s"
-  
+
   grafana:
     dashboards:
       - name: "Chaos Engineering Overview"
@@ -556,4 +556,4 @@ network_config:
   prefer_amd64_for_scheduler: true
   arm64_compatible_images:
     - "litmuschaos/go-runner:3.9.0"
-    - "litmuschaos/chaos-runner:3.9.0" 
+    - "litmuschaos/chaos-runner:3.9.0"

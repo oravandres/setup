@@ -17,7 +17,7 @@
       - name: "HAProxy Load Balancer"
         description: "K3s API server load balancing and VIP"
         enabled: "{{ deploy_haproxy | default(true) }}"
-  
+
   tasks:
     - name: "Display networking deployment overview"
       debug:
@@ -259,4 +259,4 @@
           - "  • Stats: http://{{ vip_address }}:8404"
           - ""
           - "🚀 Network infrastructure is ready for applications!"
-          - "Next: Deploy storage and GitOps components" 
+          - "Next: Deploy storage and GitOps components"

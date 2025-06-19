@@ -6,7 +6,7 @@ sealed_secrets_namespace: "kube-system"
 sealed_secrets_controller_name: "sealed-secrets-controller"
 sealed_secrets_version: "v0.24.4"  # Latest stable version
 
-# Helm chart configuration  
+# Helm chart configuration
 sealed_secrets_chart_version: "2.15.2"
 sealed_secrets_repository: "https://bitnami-labs.github.io/sealed-secrets"
 
@@ -76,4 +76,4 @@ sealed_secrets_log_level: "info"
 
 # GitOps integration
 gitops_secrets_directory: "gitops/secrets"
-create_gitops_structure: true 
+create_gitops_structure: true

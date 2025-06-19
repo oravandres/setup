@@ -63,7 +63,7 @@
       --disable=traefik \
       --write-kubeconfig-mode=644 \
       --node-ip={{ external_ip }}
-  when: 
+  when:
     - inventory_hostname == groups['k3s_servers'][0]
     - not k3s_installed.stat.exists
   register: first_server_install
@@ -79,7 +79,7 @@
     host: "{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}"
     port: 6443
     timeout: 300
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - inventory_hostname != groups['k3s_servers'][0]
     - not k3s_installed.stat.exists
@@ -89,7 +89,7 @@
     host: "{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default(hostvars[groups['k3s_servers'][0]]['ansible_host']) }}"
     port: 6443
     timeout: 300
-  when: 
+  when:
     - inventory_hostname in groups['k3s_workers'] | default([])
     - not k3s_installed.stat.exists
 
@@ -100,7 +100,7 @@
       --disable=traefik \
       --write-kubeconfig-mode=644 \
       --node-ip={{ external_ip }}
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - inventory_hostname != groups['k3s_servers'][0]
     - not k3s_installed.stat.exists
@@ -109,7 +109,7 @@
 - name: Debug additional server installation
   debug:
     msg: "Additional server installation result: {{ additional_server_install.rc | default('skipped') }}"
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - inventory_hostname != groups['k3s_servers'][0]
 
@@ -118,7 +118,7 @@
     curl -sfL https://get.k3s.io | K3S_TOKEN={{ k3s_token }} sh -s - agent \
       --server https://10.0.0.10:6443 \
       --node-ip={{ external_ip }}
-  when: 
+  when:
     - inventory_hostname in groups['k3s_workers'] | default([])
     - not k3s_installed.stat.exists
   register: worker_install
@@ -150,7 +150,7 @@
     mode: '0700'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - ansible_user != 'root'
 
@@ -162,7 +162,7 @@
     force: yes
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - ansible_user != 'root'
 
@@ -183,7 +183,7 @@
 - name: Show cluster nodes
   debug:
     msg: "{{ cluster_status.stdout_lines }}"
-  when: 
+  when:
     - inventory_hostname == groups['k3s_servers'][0]
     - cluster_status is defined
 
@@ -277,10 +277,10 @@
       #!/bin/bash
       echo "🔍 Kubeconfig HA VIP Validation Script"
       echo "====================================="
-      
+
       # Check kubeconfig files for VIP usage
       echo "📋 Kubeconfig Files Status:"
-      
+
       # Check system kubeconfig
       if [ -f /etc/rancher/k3s/k3s.yaml ]; then
           SERVER_URL=$(grep "server:" /etc/rancher/k3s/k3s.yaml | awk '{print $2}')
@@ -293,7 +293,7 @@
       else
           echo "  ❌ System kubeconfig not found"
       fi
-      
+
       # Check user kubeconfig
       if [ -f ~/.kube/config ]; then
           USER_SERVER_URL=$(grep "server:" ~/.kube/config | awk '{print $2}')
@@ -307,7 +307,7 @@
           echo "  ⚠️  User kubeconfig not found"
       fi
       echo
-      
+
       # Test connectivity using VIP
       echo "🧪 API Connectivity Test via VIP:"
       if command -v kubectl &> /dev/null; then
@@ -318,7 +318,7 @@
           else
               echo "  ❌ kubectl get nodes via system kubeconfig: FAILED"
           fi
-          
+
           # Test with user kubeconfig if exists
           if [ -f ~/.kube/config ]; then
               export KUBECONFIG=~/.kube/config
@@ -332,7 +332,7 @@
           echo "  ⚠️  kubectl not available for testing"
       fi
       echo
-      
+
       # Show cluster info
       echo "📊 Cluster Information:"
       export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -349,7 +349,7 @@
           echo "  ❌ Unable to retrieve cluster information"
       fi
       echo
-      
+
       # Troubleshooting tips
       echo "🔧 Troubleshooting:"
       echo "  1. Verify VIP is active: ip addr | grep 10.0.0.10"
@@ -377,29 +377,29 @@
       - Server kubeconfig updated: {{ 'YES' if kubeconfig_updated_servers.changed else 'NO (already configured)' }}
       - Local kubeconfig updated: {{ 'YES' if kubeconfig_updated_local.changed else 'NO (already configured)' }}
       - kubectl test via VIP: {{ 'SUCCESS' if kubectl_test_vip.rc == 0 else 'FAILED - check HA setup' }}
-      
+
       🌐 HA Access Configuration:
       - All kubeconfig files now point to: https://10.0.0.10:6443
       - Backup created: /etc/rancher/k3s/k3s.yaml.backup-{{ ansible_date_time.epoch }}
       - Local config: {{ local_user_home.stdout }}/.kube/k3s-config
-      
+
       🔧 High Availability Benefits:
       - No single point of failure for API access
       - Automatic failover between master nodes
       - Client connections route through HAProxy VIP
       - Transparent failover within 2 seconds
-      
+
       🛠️ Validation & Testing:
       - Run validation: /usr/local/bin/validate-kubeconfig-ha
       - Test failover: kubectl get nodes (while stopping keepalived on active master)
       - Monitor VIP: watch kubectl get nodes
-      
+
       📋 Next Steps:
       1. Run validation script on all nodes
       2. Test failover scenarios (Task 5)
       3. Update any external clients to use VIP
       4. Monitor API access patterns
-      
+
       ⚠️ Important: All cluster API access now routes through HA VIP 10.0.0.10!
   run_once: true
   when: inventory_hostname == groups['k3s_servers'][0]

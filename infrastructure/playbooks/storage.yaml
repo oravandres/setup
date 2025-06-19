@@ -8,7 +8,7 @@
   gather_facts: true
   serial: 1
   tags: ['storage', 'longhorn']
-  
+
   tasks:
     - name: "Include Longhorn role"
       include_role:
@@ -21,7 +21,7 @@
   gather_facts: true
   run_once: true
   tags: ['gitops', 'argocd']
-  
+
   tasks:
     - name: "Include ArgoCD role"
       include_role:
@@ -34,7 +34,7 @@
   gather_facts: false
   become: false
   tags: ['verify']
-  
+
   tasks:
     - name: "Wait for Longhorn system to be ready"
       shell: |
@@ -64,4 +64,4 @@
           - ""
           - "🌐 Access URLs:"
           - "  • Longhorn UI: https://longhorn.k3s.local"
-          - "  • ArgoCD UI: https://argocd.k3s.local" 
+          - "  • ArgoCD UI: https://argocd.k3s.local"

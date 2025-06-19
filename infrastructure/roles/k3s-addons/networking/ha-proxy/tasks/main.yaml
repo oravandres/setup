@@ -92,13 +92,13 @@
       #!/bin/bash
       # Health check script for keepalived
       # Checks if HAProxy is running and backend is healthy
-      
+
       # Check if haproxy process is running
       if ! systemctl is-active --quiet haproxy; then
           echo "HAProxy service is not running"
           exit 1
       fi
-      
+
       # Check HAProxy stats for backend status
       # Look for local-k3s backend in UP state
       if echo "show stat" | socat unix-connect:/run/haproxy/admin.sock stdio 2>/dev/null | grep "k3s-api-backend,local-k3s" | grep -q "UP"; then
@@ -118,10 +118,10 @@
     content: |
       #!/bin/bash
       # Notification script for keepalived state changes
-      
+
       ENDSTATE=$1
       NAME=$2
-      
+
       case $ENDSTATE in
           "MASTER")
               echo "$(date): Became MASTER for $NAME - VIP 10.0.0.10 is now active on $(hostname)" | logger -t keepalived
@@ -178,7 +178,7 @@
     content: |
       # keepalived configuration for K3s control plane VIP
       # Manages VIP 10.0.0.10 with 2s TTL for rapid failover
-      
+
       vrrp_script check_haproxy {
           # Health check script - runs every 2 seconds
           script "/usr/local/bin/check_haproxy_backend.sh"
@@ -187,27 +187,27 @@
           fall 2              # Require 2 failures before triggering failover
           rise 1              # Require 1 success to recover
       }
-      
+
       vrrp_instance VI_K3S {
           state {{ keepalived_state }}                    # MASTER or BACKUP
           interface {{ network_interface.stdout }}        # Network interface
           virtual_router_id 51                            # Unique VRRP ID
           priority {{ keepalived_priority }}              # Node priority
           advert_int 1                                    # Advertisement interval
-          
+
           authentication {
               auth_type PASS
               auth_pass k3s-ha-secret-2024                # Shared secret
           }
-          
+
           virtual_ipaddress {
               10.0.0.10/32 dev {{ network_interface.stdout }}  # VIP as required
           }
-          
+
           track_script {
               check_haproxy                               # Track HAProxy health
           }
-          
+
           notify_master "/usr/local/bin/keepalived_notify.sh MASTER VI_K3S"
           notify_backup "/usr/local/bin/keepalived_notify.sh BACKUP VI_K3S"
           notify_fault "/usr/local/bin/keepalived_notify.sh FAULT VI_K3S"
@@ -285,13 +285,13 @@
       #!/bin/bash
       echo "🔍 HAProxy + keepalived Control Plane VIP Validation"
       echo "===================================================="
-      
+
       # Check service status
       echo "📋 Service Status:"
       echo "  HAProxy: $(systemctl is-active haproxy)"
       echo "  keepalived: $(systemctl is-active keepalived)"
       echo
-      
+
       # Check VIP assignment
       INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
       VIP_ASSIGNED=$(ip addr show $INTERFACE | grep -c "10.0.0.10" || echo "0")
@@ -299,7 +299,7 @@
       echo "  Interface: $INTERFACE"
       echo "  VIP 10.0.0.10 assigned: $([ $VIP_ASSIGNED -gt 0 ] && echo 'YES (MASTER)' || echo 'NO (BACKUP)')"
       echo
-      
+
       # Check HAProxy backend health
       if systemctl is-active --quiet haproxy; then
           BACKEND_STATUS=$(echo "show stat" | socat unix-connect:/run/haproxy/admin.sock stdio 2>/dev/null | grep "k3s-api-backend,local-k3s" | grep -o "UP\|DOWN" || echo "UNKNOWN")
@@ -308,17 +308,17 @@
           echo "❌ HAProxy is not running"
       fi
       echo
-      
+
       # Check API connectivity
       echo "🧪 API Connectivity Tests:"
-      
+
       # Test local API
       if curl -k -s -o /dev/null -w "%{http_code}" https://127.0.0.1:6443/healthz --connect-timeout 5 | grep -q "200"; then
           echo "  ✅ Local K3s API (127.0.0.1:6443): HEALTHY"
       else
           echo "  ❌ Local K3s API (127.0.0.1:6443): UNHEALTHY"
       fi
-      
+
       # Test VIP API
       if curl -k -s -o /dev/null -w "%{http_code}" https://10.0.0.10:6443/healthz --connect-timeout 5 | grep -q "200"; then
           echo "  ✅ VIP API (10.0.0.10:6443): HEALTHY"
@@ -326,13 +326,13 @@
           echo "  ❌ VIP API (10.0.0.10:6443): UNHEALTHY"
       fi
       echo
-      
+
       # Show HAProxy stats
       echo "📊 HAProxy Stats:"
       echo "  Stats URL: http://$(hostname -I | awk '{print $1}'):8404/stats"
       echo "  Stats Command: curl -s http://localhost:8404/stats"
       echo
-      
+
       # Failover test instructions
       echo "🔄 Failover Testing:"
       echo "  1. To test failover: sudo systemctl stop keepalived"
@@ -355,31 +355,31 @@
       - Node priority: {{ keepalived_priority }} ({{ keepalived_state }})
       - VIP assigned to this node: {{ 'YES' if vip_assigned.stdout | int > 0 else 'NO' }}
       - HAProxy backend status: {{ backend_status.stdout | default('UNKNOWN') }}
-      
+
       🌐 Control Plane VIP Access:
       - VIP Address: 10.0.0.10:6443
       - HAProxy Stats: http://{{ ansible_default_ipv4.address }}:8404/stats
       - Local API health: {{ 'HEALTHY' if api_health_local.status == 200 else 'UNHEALTHY' }}
       - VIP API health: {{ 'HEALTHY' if api_health_vip.status == 200 else 'NOT TESTED' if vip_assigned.stdout | int == 0 else 'UNHEALTHY' }}
-      
+
       🔧 Configuration Details:
       - Health check interval: 2 seconds (/healthz endpoint)
       - Failover TTL: 2 seconds (keepalived advert_int=1, check interval=2)
       - Authentication: VRRP with shared secret
       - Local backend: 127.0.0.1:6443
-      
+
       🛠️ Validation & Testing:
       - Run validation: /usr/local/bin/validate-ha-control-plane
       - Test failover: sudo systemctl stop keepalived (on MASTER node)
       - Monitor VIP: watch -n 1 'ip addr | grep 10.0.0.10'
       - Update kubeconfig: kubectl config set-cluster default --server=https://10.0.0.10:6443
-      
+
       📋 Next Steps:
       1. Run validation script on all master nodes
       2. Update K3s agent nodes to use VIP (10.0.0.10:6443)
       3. Test failover scenarios (Task 5)
       4. Monitor with observability stack (Task 10)
-      
+
       ⚠️ Important: This creates a truly HA control plane with 2s failover!
       🔄 The VIP will automatically move between master nodes on failure.
 
@@ -396,4 +396,4 @@
     name: keepalived
     state: restarted
   become: yes
-  listen: "restart keepalived" 
+  listen: "restart keepalived"

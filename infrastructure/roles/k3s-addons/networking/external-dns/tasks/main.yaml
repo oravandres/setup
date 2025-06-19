@@ -78,4 +78,4 @@
 - name: Display external-dns validation results
   debug:
     var: external_dns_validation.stdout_lines
-  run_once: true 
+  run_once: true

@@ -110,7 +110,7 @@
 
 - name: Display Node.js installation summary
   debug:
-    msg: 
+    msg:
       - "Node.js and npm versions: {{ node_version.stdout }}"
       - "NVM installed at: {{ user_home.stdout }}/.nvm"
       - "Global packages: yarn, pnpm, typescript, ts-node, nodemon, eslint, prettier"

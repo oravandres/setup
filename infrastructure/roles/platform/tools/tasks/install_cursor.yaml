@@ -177,4 +177,4 @@
       - "AppImage: /opt/cursor/cursor.AppImage"
       - "Desktop entry: {{ user_home.stdout }}/Desktop/Cursor.desktop"
       - "User symlink: {{ user_home.stdout }}/.local/bin/cursor"
-      - "You can launch Cursor from applications menu or run 'cursor' in terminal" 
+      - "You can launch Cursor from applications menu or run 'cursor' in terminal"

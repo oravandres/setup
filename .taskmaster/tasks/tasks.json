@@ -609,7 +609,7 @@
         "description": "Update all README.md files across the project to be professional, straight-to-point, and include practical examples and commands.",
         "details": "Conduct a comprehensive review and update of all existing README.md files within the project repository. This includes, but is not limited to:\n\n1.  **Main Project README:** Provide a high-level overview, project goals, key technologies, setup prerequisites, and entry points for different areas (infrastructure, GitOps, applications).\n2.  **Infrastructure Documentation:** Update READMEs within the `infrastructure/` directory, covering the overall infrastructure structure, inventory setup, and how to run core playbooks.\n3.  **Role-Specific READMEs:** Ensure each significant Ansible role within `infrastructure/roles/` has a clear README explaining its purpose, variables, dependencies, and usage examples.\n4.  **GitOps Guides:** Update READMEs within the `gitops/` directory, explaining the GitOps workflow, directory structure, how to add new applications, manage environments, and use ArgoCD.\n5.  **Component-Specific READMEs:** Update documentation for deployed components like the Observability stack (Prometheus, Grafana, Loki), Ingress, MetalLB, etc., focusing on how to access/use them, key configuration points, and common commands (e.g., accessing UIs, checking logs).\n\nFor each README, focus on:\n*   **Clarity and Conciseness:** Remove jargon, get straight to the point.\n*   **Practical Examples:** Include copy-pasteable command examples for common tasks (e.g., running a playbook, syncing an ArgoCD app, checking a service status).\n*   **Structure:** Use headings, lists, and code blocks effectively.\n*   **Accuracy:** Ensure documentation reflects the current state of the project (e.g., environment structure from Task 27, GitOps structure from Task 16).\n*   **Consistency:** Maintain a consistent tone and formatting style across all READMEs.",
         "testStrategy": "1.  Review each updated README.md file manually for clarity, conciseness, accuracy, and completeness based on the requirements.\n2.  Verify that all specified types of READMEs (main, infrastructure, roles, GitOps, components) have been updated.\n3.  Spot-check command examples and usage instructions provided in the READMEs by attempting to execute them in a test environment.\n4.  Ensure internal links between READMEs (if any) are correct.\n5.  Confirm that the documentation accurately reflects the current project structure and deployed components.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           8,
           10,
@@ -639,7 +639,7 @@
     ],
     "metadata": {
       "created": "2025-06-17T20:14:18.518Z",
-      "updated": "2025-06-19T20:34:11.641Z",
+      "updated": "2025-06-19T20:36:03.421Z",
       "description": "Tasks for master context"
     }
   }

@@ -31,7 +31,7 @@ grafana_domain: "grafana.local"
 loki_values:
   # Deployment mode - SingleBinary for simplicity
   deploymentMode: SingleBinary
-  
+
   # Loki configuration
   loki:
     # Storage configuration
@@ -40,7 +40,7 @@ loki_values:
       filesystem:
         chunks_directory: /var/loki/chunks
         rules_directory: /var/loki/rules
-    
+
     # Schema configuration
     schemaConfig:
       configs:
@@ -51,18 +51,18 @@ loki_values:
           index:
             prefix: loki_index_
             period: 24h
-    
+
     # Storage configuration
     storageConfig:
       filesystem:
         directory: /var/loki/chunks
-    
+
     # Server configuration
     server:
       http_listen_port: 3100
       grpc_listen_port: 9095
       log_level: info
-    
+
     # Limits configuration (optimized for mixed architecture)
     limits_config:
       enforce_metric_name: false
@@ -76,7 +76,7 @@ loki_values:
       max_query_series: 1000
       max_query_lookback: 168h
       retention_period: 168h  # 7 days
-    
+
     # Compactor for retention
     compactor:
       working_directory: /var/loki/boltdb-shipper-compactor
@@ -85,21 +85,21 @@ loki_values:
       retention_enabled: true
       retention_delete_delay: 2h
       retention_delete_worker_count: 150
-    
+
     # Query scheduler
     query_scheduler:
       max_outstanding_requests_per_tenant: 2048
-    
+
     # Frontend
     frontend:
       max_outstanding_per_tenant: 2048
       compress_responses: true
       log_queries_longer_than: 10s
-    
+
     # Querier
     querier:
       max_concurrent: 16
-  
+
   # Single binary deployment
   singleBinary:
     # Resource configuration - balanced for mixed hardware
@@ -110,13 +110,13 @@ loki_values:
       requests:
         cpu: 1000m
         memory: 2Gi
-    
+
     # Persistence
     persistence:
       enabled: true
       size: "{{ loki_storage_size }}"
       storageClass: "{{ loki_storage_class }}"
-    
+
     # Node affinity - prefer x86_64 but allow ARM
     affinity:
       nodeAffinity:
@@ -127,7 +127,7 @@ loki_values:
                 - key: kubernetes.io/arch
                   operator: In
                   values: ["amd64"]
-    
+
     # Tolerations for mixed architecture
     tolerations:
       - key: "arm"
@@ -138,7 +138,7 @@ loki_values:
         operator: "Equal"
         value: "arm64"
         effect: "NoSchedule"
-    
+
     # Extra environment variables
     extraEnv:
       - name: JAEGER_AGENT_HOST
@@ -149,12 +149,12 @@ loki_values:
         value: ""
       - name: JAEGER_SAMPLER_PARAM
         value: ""
-  
+
   # Gateway configuration (for ingress)
   gateway:
     enabled: true
     replicas: 1
-    
+
     # Resources for gateway
     resources:
       limits:
@@ -163,16 +163,16 @@ loki_values:
       requests:
         cpu: 250m
         memory: 256Mi
-    
+
     # Service configuration
     service:
       type: ClusterIP
       port: 80
-    
+
     # Ingress configuration
     ingress:
       enabled: false  # We handle ingress separately
-  
+
   # Disable read/write/backend components (using single binary)
   read:
     enabled: false
@@ -180,22 +180,22 @@ loki_values:
     enabled: false
   backend:
     enabled: false
-  
+
   # Monitoring configuration
   monitoring:
     enabled: true
-    
+
     serviceMonitor:
       enabled: true
       namespace: monitoring
       labels:
         release: kube-prometheus-stack
-    
+
     selfMonitoring:
       enabled: false
       grafanaAgent:
         installOperator: false
-  
+
   # Test configuration
   test:
     enabled: false
@@ -205,7 +205,7 @@ promtail_values:
   # Image configuration
   image:
     tag: "{{ promtail_version }}"
-  
+
   # Configuration
   config:
     # Promtail server configuration
@@ -213,11 +213,11 @@ promtail_values:
       http_listen_port: 3101
       grpc_listen_port: 9095
       log_level: info
-    
+
     # Position file
     positions:
       filename: /run/promtail/positions.yaml
-    
+
     # Loki client configuration
     clients:
       - url: http://loki-gateway.logging.svc.cluster.local/loki/api/v1/push
@@ -229,7 +229,7 @@ promtail_values:
           min_period: 500ms
           max_period: 5m
           max_retries: 10
-    
+
     # Scrape configurations
     scrape_configs:
       # Kubernetes pod logs
@@ -264,30 +264,30 @@ promtail_values:
             target_label: namespace
           - source_labels: [__meta_kubernetes_pod_node_name]
             target_label: node
-        
+
         pipeline_stages:
           # Parse container logs
           - cri: {}
-          
+
           # Extract log level
           - regex:
               expression: '(?P<level>DEBUG|INFO|WARN|WARNING|ERROR|FATAL|TRACE)'
           - labels:
               level:
-          
+
           # Drop empty lines
           - match:
               selector: '{job="kubernetes-pods"}'
               stages:
                 - drop:
                     expression: '^\s*$'
-          
+
           # Limit log line length
           - limit:
               rate: 1000
               burst: 2000
               drop: true
-      
+
       # Kubernetes events
       - job_name: kubernetes-events
         kubernetes_sd_configs:
@@ -306,7 +306,7 @@ promtail_values:
             labels:
               job: kubernetes-events
               __path__: /var/log/pods/kube-system_*/kube-apiserver/*.log
-  
+
   # Resources - lightweight for Pi compatibility
   resources:
     limits:
@@ -315,7 +315,7 @@ promtail_values:
     requests:
       cpu: 250m
       memory: 256Mi
-  
+
   # Security context
   securityContext:
     runAsUser: 0
@@ -324,7 +324,7 @@ promtail_values:
     capabilities:
       drop:
         - ALL
-  
+
   # Volume mounts for log access
   volumeMounts:
     - name: pods
@@ -333,7 +333,7 @@ promtail_values:
     - name: containers
       mountPath: /var/lib/docker/containers
       readOnly: true
-  
+
   # Additional volumes
   extraVolumes:
     - name: pods
@@ -342,7 +342,7 @@ promtail_values:
     - name: containers
       hostPath:
         path: /var/lib/docker/containers
-  
+
   # Tolerations to run on all nodes
   tolerations:
     - key: node-role.kubernetes.io/master
@@ -359,7 +359,7 @@ promtail_values:
       operator: "Equal"
       value: "arm64"
       effect: "NoSchedule"
-  
+
   # Service monitor for Prometheus
   serviceMonitor:
     enabled: true
@@ -368,10 +368,10 @@ promtail_values:
       release: kube-prometheus-stack
     interval: 30s
     scrapeTimeout: 10s
-  
+
   # Extra environment variables
   extraEnv:
     - name: HOSTNAME
       valueFrom:
         fieldRef:
-          fieldPath: spec.nodeName 
+          fieldPath: spec.nodeName

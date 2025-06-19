@@ -16,7 +16,7 @@ all:
               node_type: single_node_dev
               # Development-specific labels
               node_labels:
-                - "node-role.kubernetes.io/control-plane=true" 
+                - "node-role.kubernetes.io/control-plane=true"
                 - "node-role.kubernetes.io/worker=true"
                 - "kubernetes.io/arch=amd64"
                 - "environment=dev"
@@ -27,8 +27,8 @@ all:
                 debug_mode: true
                 local_storage_only: true
                 skip_backup: true
-                
+
     # Development-specific logical grouping
     dev_localhost:
       hosts:
-        localhost: 
+        localhost:

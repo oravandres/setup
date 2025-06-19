@@ -32,7 +32,7 @@ all:
           node_labels:
             - "node-role.kubernetes.io/control-plane=true"
             - "kubernetes.io/arch=arm64"
-    
+
     workers:
       hosts:
         pi-n1:
@@ -67,13 +67,13 @@ all:
           node_labels:
             - "node-role.kubernetes.io/worker=true"
             - "kubernetes.io/arch=arm64"
-    
+
     # Logical groupings
     k3s_cluster:
       children:
         control_plane:
         workers:
-    
+
     raspberry_pi:
       children:
         control_plane:
@@ -81,7 +81,7 @@ all:
             pi-c1:
             pi-c2:
         workers:
-    
+
     x86_nodes:
       hosts:
-        localhost: 
+        localhost:

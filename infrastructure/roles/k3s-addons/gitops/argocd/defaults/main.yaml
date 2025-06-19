@@ -29,12 +29,12 @@ argocd_values:
   global:
     image:
       tag: "{{ argocd_version }}"
-      
+
   # ArgoCD Server configuration
   server:
     image:
       tag: "{{ argocd_version }}"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -43,7 +43,7 @@ argocd_values:
       limits:
         cpu: 500m
         memory: 512Mi
-    
+
     # Metrics and monitoring
     metrics:
       enabled: true
@@ -51,28 +51,28 @@ argocd_values:
         enabled: true
         additionalLabels:
           release: kube-prometheus
-    
+
     # Service configuration
     service:
       type: ClusterIP
-    
+
     # Ingress disabled (managed separately for better control)
     ingress:
       enabled: false
-    
+
     # Server configuration
     config:
       url: "https://{{ argocd_domain }}"
-      
+
     # OIDC configuration (conditional)
     extraArgs:
       - --insecure  # Required for ingress TLS termination
-  
+
   # Application Controller configuration
   controller:
     image:
       tag: "{{ argocd_version }}"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -81,7 +81,7 @@ argocd_values:
       limits:
         cpu: 1000m
         memory: 1Gi
-    
+
     # Metrics
     metrics:
       enabled: true
@@ -89,12 +89,12 @@ argocd_values:
         enabled: true
         additionalLabels:
           release: kube-prometheus
-  
+
   # Repository Server configuration
   repoServer:
     image:
       tag: "{{ argocd_version }}"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -103,7 +103,7 @@ argocd_values:
       limits:
         cpu: 500m
         memory: 512Mi
-    
+
     # Metrics
     metrics:
       enabled: true
@@ -111,13 +111,13 @@ argocd_values:
         enabled: true
         additionalLabels:
           release: kube-prometheus
-  
+
   # ApplicationSet Controller
   applicationSet:
     enabled: true
     image:
       tag: "{{ argocd_version }}"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -126,7 +126,7 @@ argocd_values:
       limits:
         cpu: 200m
         memory: 256Mi
-    
+
     # Metrics
     metrics:
       enabled: true
@@ -134,17 +134,17 @@ argocd_values:
         enabled: true
         additionalLabels:
           release: kube-prometheus
-  
+
   # Dex (disabled - using external OIDC if needed)
   dex:
     enabled: false
-  
+
   # Redis for caching
   redis:
     enabled: true
     image:
       tag: "7.0.11-alpine"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -153,7 +153,7 @@ argocd_values:
       limits:
         cpu: 200m
         memory: 128Mi
-    
+
     # Metrics
     metrics:
       enabled: true
@@ -161,13 +161,13 @@ argocd_values:
         enabled: true
         additionalLabels:
           release: kube-prometheus
-  
+
   # Notifications controller
   notifications:
     enabled: true
     image:
       tag: "{{ argocd_version }}"
-    
+
     # Resource configuration
     resources:
       requests:
@@ -176,7 +176,7 @@ argocd_values:
       limits:
         cpu: 200m
         memory: 256Mi
-    
+
     # Metrics
     metrics:
       enabled: true
@@ -189,7 +189,7 @@ argocd_values:
 argocd_image_updater_values:
   image:
     tag: "v0.12.2"
-  
+
   # Resource configuration
   resources:
     requests:
@@ -198,7 +198,7 @@ argocd_image_updater_values:
     limits:
       cpu: 200m
       memory: 256Mi
-  
+
   # Configuration
   config:
     # Registry configurations
@@ -208,15 +208,15 @@ argocd_image_updater_values:
         ping: yes
         prefix: docker.io
         default: yes
-      
+
     # Git configuration
     git:
       user: "argocd-image-updater"
       email: "argocd-image-updater@noreply.local"
-    
+
     # Log level
     logLevel: info
-  
+
   # Metrics
   metrics:
     enabled: true
@@ -239,4 +239,4 @@ argocd_oidc_config:
   requestedIDTokenClaims:
     groups:
       essential: true
-  groupsClaim: groups 
+  groupsClaim: groups

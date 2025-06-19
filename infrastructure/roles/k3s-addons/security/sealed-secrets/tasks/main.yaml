@@ -25,12 +25,12 @@
     content: |
       # Sealed Secrets Controller Helm values
       fullnameOverride: "{{ sealed_secrets_controller_name }}"
-      
+
       image:
         repository: "{{ sealed_secrets_image.repository }}"
         tag: "{{ sealed_secrets_image.tag }}"
         pullPolicy: "{{ sealed_secrets_image.pullPolicy }}"
-      
+
       resources:
         limits:
           cpu: "{{ sealed_secrets_resources.limits.cpu }}"
@@ -38,24 +38,24 @@
         requests:
           cpu: "{{ sealed_secrets_resources.requests.cpu }}"
           memory: "{{ sealed_secrets_resources.requests.memory }}"
-      
+
       securityContext:
         runAsNonRoot: {{ sealed_secrets_security_context.runAsNonRoot }}
         runAsUser: {{ sealed_secrets_security_context.runAsUser }}
         fsGroup: {{ sealed_secrets_security_context.fsGroup }}
-      
+
       service:
         port: {{ sealed_secrets_service.port }}
         type: "{{ sealed_secrets_service.type }}"
-      
+
       serviceAccount:
         create: {{ sealed_secrets_service_account.create }}
         name: "{{ sealed_secrets_service_account.name }}"
-      
+
       rbac:
         create: {{ sealed_secrets_rbac.create }}
         pspEnabled: {{ sealed_secrets_rbac.pspEnabled }}
-      
+
       {% if sealed_secrets_metrics.enabled %}
       metrics:
         port: {{ sealed_secrets_metrics.port }}
@@ -67,21 +67,21 @@
             {{ key }}: "{{ value }}"
             {% endfor %}
       {% endif %}
-      
+
       {% if sealed_secrets_node_selector %}
       nodeSelector:
         {% for key, value in sealed_secrets_node_selector.items() %}
         {{ key }}: "{{ value }}"
         {% endfor %}
       {% endif %}
-      
+
       {% if sealed_secrets_tolerations %}
       tolerations:
         {% for toleration in sealed_secrets_tolerations %}
         - {{ toleration | to_yaml }}
         {% endfor %}
       {% endif %}
-      
+
       # Additional controller arguments
       {% if sealed_secrets_additional_args %}
       args:
@@ -89,12 +89,12 @@
         - "{{ arg }}"
         {% endfor %}
       {% endif %}
-      
+
       # Log level
       extraEnv:
         - name: "LOG_LEVEL"
           value: "{{ sealed_secrets_log_level }}"
-      
+
       # Pod annotations
       {% if sealed_secrets_pod_annotations %}
       podAnnotations:
@@ -215,4 +215,4 @@
       - "📋 Next Steps:"
       - "1. Use 'kubeseal' to create sealed secrets"
       - "2. Store sealed secrets in {{ gitops_secrets_directory }}/"
-      - "3. Apply sealed secrets via GitOps workflow" 
+      - "3. Apply sealed secrets via GitOps workflow"

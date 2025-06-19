@@ -233,7 +233,7 @@
                 annotations:
                   summary: "K3s node {{ $labels.instance }} is down"
                   description: "K3s node {{ $labels.instance }} has been down for more than 5 minutes."
-              
+
               - alert: K3sHighCPUUsage
                 expr: (100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 80
                 for: 10m
@@ -242,7 +242,7 @@
                 annotations:
                   summary: "High CPU usage on {{ $labels.instance }}"
                   description: "CPU usage is above 80% on {{ $labels.instance }} for more than 10 minutes."
-              
+
               - alert: K3sHighMemoryUsage
                 expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
                 for: 10m
@@ -251,7 +251,7 @@
                 annotations:
                   summary: "High memory usage on {{ $labels.instance }}"
                   description: "Memory usage is above 85% on {{ $labels.instance }} for more than 10 minutes."
-              
+
               - alert: K3sDiskSpaceRunningLow
                 expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
                 for: 5m
@@ -260,7 +260,7 @@
                 annotations:
                   summary: "Disk space running low on {{ $labels.instance }}"
                   description: "Disk space is below 20% on {{ $labels.instance }}."
-              
+
               - alert: K3sPodCrashLooping
                 expr: increase(kube_pod_container_status_restarts_total[30m]) > 0
                 for: 15m
@@ -269,7 +269,7 @@
                 annotations:
                   summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
                   description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in the last 30 minutes."
-              
+
               - alert: K3sPersistentVolumeUsageHigh
                 expr: (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) * 100 > 80
                 for: 10m
@@ -329,4 +329,4 @@
       - "2. Configure AlertManager notification channels"
       - "3. Import additional custom dashboards as needed"
       - "4. Set up log aggregation with Loki (deploy logging role)"
-  run_once: true 
+  run_once: true

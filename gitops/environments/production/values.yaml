@@ -1,10 +1,10 @@
-# Production Environment Configuration  
+# Production Environment Configuration
 ---
 global:
   environment: production
   domain: "cluster.local"
   cluster_name: "k3s-production"
-  
+
 # ArgoCD Configuration
 argocd:
   enabled: true
@@ -45,7 +45,7 @@ cert_manager:
   wildcard_domains:
     - "*.cluster.local"
 
-# MetalLB Configuration  
+# MetalLB Configuration
 metallb:
   enabled: true
   ip_pool:
@@ -131,7 +131,7 @@ sealed_secrets:
     enabled: true
     service_monitor:
       enabled: true
-  
+
 # High Availability Configuration
 ha:
   etcd_backup:
@@ -152,4 +152,4 @@ external:
     backend: "vault"  # External secrets operator with Vault
   backup:
     provider: "s3"
-    bucket: "homelab-backups" 
+    bucket: "homelab-backups"

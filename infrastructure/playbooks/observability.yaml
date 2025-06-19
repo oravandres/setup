@@ -8,7 +8,7 @@
   gather_facts: true
   run_once: true
   tags: ['observability', 'monitoring']
-  
+
   tasks:
     - name: "Include monitoring role"
       include_role:
@@ -20,7 +20,7 @@
   become: true
   gather_facts: true
   tags: ['observability', 'logging']
-  
+
   tasks:
     - name: "Include logging role"
       include_role:
@@ -33,7 +33,7 @@
   gather_facts: false
   become: false
   tags: ['verify']
-  
+
   tasks:
     - name: "Wait for Prometheus to be ready"
       shell: |
@@ -89,4 +89,4 @@
           - "  • Node and cluster metrics"
           - "  • Application performance monitoring"
           - "  • Custom dashboards and alerts"
-          - "  • Centralized log aggregation" 
+          - "  • Centralized log aggregation"

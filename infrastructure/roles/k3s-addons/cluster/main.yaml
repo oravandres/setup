@@ -44,7 +44,7 @@
       --disable=traefik \
       --write-kubeconfig-mode=644 \
       --node-ip={{ external_ip }}
-  when: 
+  when:
     - inventory_hostname == groups['k3s_servers'][0]
     - not k3s_installed.stat.exists
   register: first_server_install
@@ -64,7 +64,7 @@
       --disable=traefik \
       --write-kubeconfig-mode=644 \
       --node-ip={{ external_ip }}
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - inventory_hostname != groups['k3s_servers'][0]
     - not k3s_installed.stat.exists
@@ -74,7 +74,7 @@
     curl -sfL https://get.k3s.io | K3S_TOKEN={{ k3s_token }} sh -s - agent \
       --server https://{{ hostvars[groups['k3s_servers'][0]]['external_ip'] | default('192.168.1.52') }}:6443 \
       --node-ip={{ external_ip }}
-  when: 
+  when:
     - inventory_hostname in groups['k3s_workers']
     - not k3s_installed.stat.exists
 
@@ -100,7 +100,7 @@
     mode: '0700'
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - ansible_user != 'root'
 
@@ -112,7 +112,7 @@
     force: yes
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-  when: 
+  when:
     - inventory_hostname in groups['k3s_servers']
     - ansible_user != 'root'
 
@@ -133,7 +133,7 @@
 - name: Show cluster nodes
   debug:
     msg: "{{ cluster_status.stdout_lines }}"
-  when: 
+  when:
     - inventory_hostname == groups['k3s_servers'][0]
     - cluster_status is defined
 

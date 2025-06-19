@@ -17,16 +17,16 @@
     content: |
       # Ingress NGINX configuration optimized for heterogeneous cluster (1 PC + 6 Pis)
       # Replaces disabled Traefik with modern ingress controller
-      
+
       controller:
         # Use specific ingress-nginx version that supports multi-arch
         image:
           tag: "v1.11.2"
-          
+
         # Deploy as DaemonSet with hostNetwork for direct MetalLB Layer 2 integration
         kind: DaemonSet
         hostNetwork: true
-        
+
         # Resource limits optimized for mixed hardware
         resources:
           limits:
@@ -35,7 +35,7 @@
           requests:
             cpu: 200m
             memory: 256Mi
-        
+
         # Service configuration - use LoadBalancer with MetalLB (updated for new IP range)
         service:
           type: LoadBalancer
@@ -49,19 +49,19 @@
             http: http
             https: https
           externalTrafficPolicy: Local  # Ensure traffic stays on announcing node with DaemonSet
-          
+
         # Enable ModSecurity WAF capabilities
         enableModsecurity: true
         enableOWASPcoreRules: true
         modsecurity:
           transactionId: "$request_id"
-          
+
         # Configure as default ingress class
         ingressClassResource:
           default: true
           enabled: true
           name: nginx
-          
+
         # Node affinity - prefer powerful nodes for ingress traffic
         affinity:
           nodeAffinity:
@@ -90,7 +90,7 @@
                         operator: In
                         values: ["controller"]
                   topologyKey: kubernetes.io/hostname
-        
+
         # Multi-arch tolerations
         tolerations:
           - key: "arm"
@@ -104,32 +104,32 @@
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"
             effect: "NoSchedule"
-        
+
         # Configuration for better performance
         config:
           # Enable real IP preservation
           use-forwarded-headers: "true"
           compute-full-forwarded-for: "true"
           use-proxy-protocol: "false"
-          
+
           # SSL configuration
           ssl-protocols: "TLSv1.2 TLSv1.3"
           ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
-          
+
           # Performance tuning
           worker-processes: "auto"
           max-worker-connections: "16384"
           upstream-keepalive-connections: "320"
           upstream-keepalive-requests: "100"
           upstream-keepalive-timeout: "60"
-          
+
           # Enable gzip compression
           enable-gzip: "true"
           gzip-types: "application/atom+xml application/javascript application/x-javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/plain text/x-component"
-          
+
           # Security headers
           add-headers: "ingress-nginx/custom-headers"
-          
+
         # Enable metrics for Prometheus monitoring
         metrics:
           enabled: true
@@ -143,12 +143,12 @@
             requests:
               cpu: 50m
               memory: 64Mi
-              
+
         # Pod disruption budget for HA
         podDisruptionBudget:
           enabled: true
           minAvailable: 1
-          
+
       # Default backend configuration
       defaultBackend:
         enabled: true
@@ -393,21 +393,21 @@
       - Controllers running: {{ running_controllers.stdout }}
       - LoadBalancer IP: {{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
       - Default backend ready: {{ 'Yes' if ingress_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1 else 'No' }}
-      
+
       🌐 Access Points:
       - HTTP: http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
       - HTTPS: https://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
       - Test App: http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
-      
+
       📋 Test Commands:
       - curl http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
       - Add to /etc/hosts: {{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }} test.k3s.local
       - curl http://test.k3s.local
-      
+
       🛡️ ModSecurity WAF Test:
       - curl "http://{{ ingress_service.resources[0].status.loadBalancer.ingress[0].ip if ingress_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}/?id=<script>alert('xss')</script>"
       - Expected: 403 Forbidden (blocked by WAF)
-      
+
       🔧 Configuration:
       - Deployment: DaemonSet with hostNetwork
       - ModSecurity WAF: Enabled with OWASP CRS
@@ -416,7 +416,7 @@
       - Gzip compression: Enabled
       - Security headers: Enabled
       - Prometheus metrics: Enabled
-      
+
       🛠️ Validation:
       - Run: /usr/local/bin/validate-ingress-nginx
 
@@ -447,7 +447,7 @@
       {% if ingress_test.status is defined %}
       Status Code: {{ ingress_test.status }}
       {% endif %}
-      
+
       🛡️ ModSecurity WAF Test:
       {{ 'SUCCESS - WAF blocking malicious requests (Status: ' + waf_test.status|string + ')' if waf_test.status in [403, 406] else 'WARNING - WAF may not be blocking as expected' if waf_test is defined else 'SKIPPED - LoadBalancer IP not ready' }}
       {% if waf_test.status is defined and waf_test.status not in [403, 406] %}
@@ -465,4 +465,4 @@
 - name: Clean up temporary values file
   file:
     path: /tmp/ingress-nginx-values.yaml
-    state: absent 
+    state: absent

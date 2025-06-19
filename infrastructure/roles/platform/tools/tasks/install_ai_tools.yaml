@@ -86,9 +86,9 @@
 
 - name: Display AI tools installation summary
   debug:
-    msg: 
+    msg:
       - "Ollama version: {{ ollama_version.stdout }}"
       - "AI/ML packages installed for user: {{ ansible_user_id }}"
       - "Core packages: torch, transformers, accelerate, datasets"
       - "Platform packages: huggingface-hub, openai, anthropic, langchain"
-      - "Vector databases: chromadb, sentence-transformers, faiss" 
+      - "Vector databases: chromadb, sentence-transformers, faiss"

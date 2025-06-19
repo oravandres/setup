@@ -4,7 +4,7 @@
   register: gpu_check
   failed_when: false
   changed_when: false
-  
+
 - name: Display GPU information
   debug:
     msg: "GPU detected: {{ gpu_check.stdout | default('No NVIDIA GPU found') }}"
@@ -89,7 +89,7 @@
     content: |
       # Example LLM deployment configuration
       # This is a template - customize for your specific model
-      
+
       apiVersion: apps/v1
       kind: Deployment
       metadata:
@@ -110,14 +110,14 @@
             # Schedule only on GPU nodes
             nodeSelector:
               accelerator: gpu
-            
+
             # Tolerate any taints on GPU node
             tolerations:
               - key: "gpuOnly"
                 operator: "Equal"
                 value: "true"
                 effect: "NoSchedule"
-            
+
             containers:
               - name: llm-server
                 # Replace with your LLM image
@@ -125,7 +125,7 @@
                 ports:
                   - containerPort: 80
                     name: http
-                
+
                 # Resource requests for GPU
                 resources:
                   limits:
@@ -136,7 +136,7 @@
                     nvidia.com/gpu: 1
                     memory: 8Gi
                     cpu: 2000m
-                
+
                 # Environment variables (customize for your model)
                 env:
                   - name: MODEL_ID
@@ -147,7 +147,7 @@
                     value: "80"
                   - name: QUANTIZE
                     value: "bitsandbytes"
-                
+
                 # Readiness and liveness probes
                 readinessProbe:
                   httpGet:
@@ -155,14 +155,14 @@
                     port: 80
                   initialDelaySeconds: 60
                   periodSeconds: 10
-                
+
                 livenessProbe:
                   httpGet:
                     path: /health
                     port: 80
                   initialDelaySeconds: 120
                   periodSeconds: 30
-      
+
       ---
       apiVersion: v1
       kind: Service
@@ -177,7 +177,7 @@
             targetPort: 80
             name: http
         type: ClusterIP
-      
+
       ---
       # NodePort for external access (optional)
       apiVersion: v1
@@ -229,23 +229,23 @@
       - NVIDIA Device Plugin running: {{ nvidia_plugin_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }} pods
       - GPU resources available in cluster: {{ 'Yes' if 'nvidia.com/gpu' in gpu_resources.stdout else 'No' }}
       {% endif %}
-      
+
       🎯 LLM Workload Setup:
       - Namespace created: llm
       - Node labeled with accelerator=gpu
       - Template deployment available: /tmp/llm-deployment-template.yaml
-      
+
       📝 Next Steps:
       1. Customize the LLM deployment template for your model
       2. Apply the deployment: kubectl apply -f /tmp/llm-deployment-template.yaml
       3. Access your LLM service via NodePort :30800
-      
+
       🔧 Architecture Benefits:
       - GPU workloads automatically scheduled to Ubuntu node
       - CPU workloads distributed across Pi workers
       - Resource isolation and optimal performance
       - Kubernetes-native GPU resource management
-      
+
       💡 Model Suggestions:
       - Small models: microsoft/DialoGPT-medium, gpt2
       - Medium models: huggingface/CodeBERTa-small-v1
@@ -253,4 +253,4 @@
 
 - name: Clean up template file (optional - keep for reference)
   debug:
-    msg: "LLM deployment template saved to /tmp/llm-deployment-template.yaml for your use" 
+    msg: "LLM deployment template saved to /tmp/llm-deployment-template.yaml for your use"

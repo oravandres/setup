@@ -115,7 +115,7 @@
 
 - name: Display Go installation summary
   debug:
-    msg: 
+    msg:
       - "Go version: {{ go_version.stdout }}"
       - "GVM installed at: {{ user_home.stdout }}/.gvm"
       - "Go tools installed: golang.org/x/tools, golangci-lint, air"

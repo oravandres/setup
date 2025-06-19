@@ -122,11 +122,11 @@
 
 - name: Display installation summary
   debug:
-    msg: 
+    msg:
       - "Python version: {{ python_version.stdout }}"
       - "Pip version: {{ pip_version.stdout }}"
       - "User packages installed to: {{ user_home.stdout }}/.local/"
 
 - name: Display data science packages installation result
   debug:
-    msg: "Data science packages installation: {{ 'successful' if not data_science_install.failed else 'failed - some packages may have dependency issues' }}" 
+    msg: "Data science packages installation: {{ 'successful' if not data_science_install.failed else 'failed - some packages may have dependency issues' }}"

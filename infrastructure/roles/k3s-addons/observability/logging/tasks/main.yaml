@@ -166,7 +166,7 @@
                 annotations:
                   summary: "Loki instance {{ $labels.instance }} is down"
                   description: "Loki instance {{ $labels.instance }} has been down for more than 5 minutes."
-              
+
               - alert: LokiHighIngestionRate
                 expr: rate(loki_ingester_samples_received_total[5m]) > 10000
                 for: 10m
@@ -175,7 +175,7 @@
                 annotations:
                   summary: "High log ingestion rate in Loki"
                   description: "Loki is receiving logs at a rate of {{ $value }} samples/sec, which is above the threshold."
-              
+
               - alert: LokiIngesterUnhealthy
                 expr: loki_ingester_flush_queue_length > 100
                 for: 15m
@@ -184,7 +184,7 @@
                 annotations:
                   summary: "Loki ingester flush queue is growing"
                   description: "Loki ingester has {{ $value }} items in flush queue, indicating potential performance issues."
-              
+
               - alert: PromtailDown
                 expr: up{job="promtail"} == 0
                 for: 5m
@@ -193,7 +193,7 @@
                 annotations:
                   summary: "Promtail instance {{ $labels.instance }} is down"
                   description: "Promtail instance {{ $labels.instance }} has been down for more than 5 minutes."
-              
+
               - alert: PromtailHighErrorRate
                 expr: rate(promtail_sent_entries_total{job="promtail"}[5m]) == 0 and rate(promtail_read_lines_total{job="promtail"}[5m]) > 0
                 for: 10m
@@ -253,4 +253,4 @@
       - "2. Create custom log-based dashboards and alerts"
       - "3. Configure log retention policies as needed"
       - "4. Set up log-based alerting rules in Grafana"
-  run_once: true 
+  run_once: true

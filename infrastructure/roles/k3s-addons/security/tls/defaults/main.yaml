@@ -11,7 +11,7 @@ create_wildcard_cert: false        # Set to true to create wildcard certificate
 wildcard_cert_namespace: "default" # Namespace for wildcard certificate
 organization_name: "HomeCluster"   # Organization name for certificates
 
-# Testing configuration  
+# Testing configuration
 create_test_service: false         # Set to true to create test service
 create_test_ingress: false         # Set to true to create test ingress
 
@@ -102,4 +102,4 @@ external_dns_values:
     runAsNonRoot: true
     runAsUser: 65534
   deploymentStrategy:
-    type: Recreate 
+    type: Recreate

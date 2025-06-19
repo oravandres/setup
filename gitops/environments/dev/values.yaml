@@ -4,7 +4,7 @@ global:
   environment: dev
   domain: "dev.localhost"
   cluster_name: "k3s-dev-local"
-  
+
 # ArgoCD Configuration - Minimal for dev
 argocd:
   enabled: false  # Disabled for localhost dev - use production cluster for GitOps testing
@@ -111,12 +111,12 @@ dev_settings:
   # Enable development tools
   kubectl_proxy: true
   debug_logging: true
-  
+
   # Resource limits are relaxed
   resource_quotas_enabled: false
-  
+
   # Fast feedback loop settings
   reconciliation_interval: "30s"
-  
+
   # Development convenience features
-  auto_restart_on_config_change: true 
+  auto_restart_on_config_change: true

@@ -1,64 +1,30 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: infrastructure-core
+  name: infrastructure
   namespace: argocd
-  labels:
-    app.kubernetes.io/name: infrastructure-core
-    app.kubernetes.io/part-of: gitops
 spec:
   generators:
-  - list:
-      elements:
-      - cluster: k3s-dev-local
-        url: https://kubernetes.default.svc
-        environment: dev
-        values_file: gitops/environments/dev/values.yaml
-        description: "Localhost development environment"
-      - cluster: k3s-production
-        url: https://kubernetes.default.svc
-        environment: production
-        values_file: gitops/environments/production/values.yaml
-        description: "Production cluster environment"
-
+    - clusters:
+        selector:
+          matchLabels:
+            environment: "{{.values.environment}}"
   template:
     metadata:
-      name: '{{cluster}}-infrastructure-core'
-      labels:
-        environment: '{{environment}}'
-        cluster: '{{cluster}}'
-        component: infrastructure
-        description: '{{description}}'
+      name: 'infrastructure-{{.name}}'
     spec:
       project: default
       source:
-        repoURL: https://github.com/oravandres/setup
+        repoURL: https://github.com/your-org/k3s-homelab-setup
         targetRevision: HEAD
-        path: gitops/infrastructure
+        path: 'gitops/infrastructure/charts'
         helm:
           valueFiles:
-          - '../{{values_file}}'
-          parameters:
-          - name: global.environment
-            value: '{{environment}}'
-          - name: global.cluster
-            value: '{{cluster}}'
+            - '../../environments/{{.values.environment}}/values.yaml'
       destination:
-        server: '{{url}}'
+        server: '{{.server}}'
         namespace: kube-system
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
-          allowEmpty: false
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        - PruneLast=true
-        retry:
-          limit: 5
-          backoff:
-            duration: 5s
-            factor: 2
-            maxDuration: 3m
-      revisionHistoryLimit: 10

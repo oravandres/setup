@@ -9,7 +9,7 @@ alertmanager_version: "v0.27.0"            # AlertManager version
 
 # Domain configuration
 grafana_domain: "grafana.local"            # Domain for Grafana UI (override externally)
-prometheus_domain: "prometheus.local"      # Domain for Prometheus UI (override externally) 
+prometheus_domain: "prometheus.local"      # Domain for Prometheus UI (override externally)
 alertmanager_domain: "alertmanager.local"  # Domain for AlertManager UI (override externally)
 
 # Ingress configuration
@@ -70,13 +70,13 @@ alertmanager_resources:
 # kube-prometheus-stack Helm values
 kube_prometheus_values:
   fullnameOverride: "kube-prometheus-stack"
-  
+
   # Global configuration
   global:
     rbac:
       create: true
       pspEnabled: false
-  
+
   # Prometheus configuration
   prometheus:
     enabled: true
@@ -84,10 +84,10 @@ kube_prometheus_values:
       replicas: "{{ prometheus_replicas | default(1) }}"
       retention: "{{ prometheus_retention | default('30d') }}"
       retentionSize: "{{ prometheus_retention_size | default('45GiB') }}"
-      
+
       # Resource configuration
       resources: "{{ prometheus_resources }}"
-      
+
       # Storage configuration
       storageSpec:
         volumeClaimTemplate:
@@ -97,34 +97,34 @@ kube_prometheus_values:
             resources:
               requests:
                 storage: "{{ prometheus_storage_size | default('50Gi') }}"
-      
+
       # Security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
         fsGroup: 65534
-      
+
       # Service monitor selector
       serviceMonitorSelectorNilUsesHelmValues: false
       podMonitorSelectorNilUsesHelmValues: false
       ruleSelectorNilUsesHelmValues: false
-      
+
       # Additional scrape configs for custom metrics
       additionalScrapeConfigs: []
-  
+
   # Grafana configuration
   grafana:
     enabled: true
-    
+
     # Admin credentials from secret
     admin:
       existingSecret: grafana-admin-secret
       userKey: admin-user
       passwordKey: admin-password
-    
+
     # Resource configuration
     resources: "{{ grafana_resources }}"
-    
+
     # Persistence configuration
     persistence:
       type: pvc
@@ -133,12 +133,12 @@ kube_prometheus_values:
       accessModes:
         - ReadWriteOnce
       size: "{{ grafana_storage_size | default('10Gi') }}"
-    
+
     # Service configuration
     service:
       type: ClusterIP
       port: 80
-    
+
     # Grafana configuration
     grafana.ini:
       server:
@@ -157,10 +157,10 @@ kube_prometheus_values:
       log:
         mode: console
         level: info
-    
+
     # Default dashboards
     defaultDashboardsEnabled: true
-    
+
     # Additional data sources
     additionalDataSources:
       - name: Loki
@@ -169,7 +169,7 @@ kube_prometheus_values:
         url: http://loki-gateway.logging.svc.cluster.local
         isDefault: false
         editable: true
-    
+
     # Dashboard providers
     dashboardProviders:
       dashboardproviders.yaml:
@@ -191,7 +191,7 @@ kube_prometheus_values:
           editable: true
           options:
             path: /var/lib/grafana/dashboards/kubernetes
-    
+
     # Pre-configured dashboards
     dashboards:
       default:
@@ -231,16 +231,16 @@ kube_prometheus_values:
           gnetId: 13032
           revision: 6
           datasource: Prometheus
-  
+
   # AlertManager configuration
   alertmanager:
     enabled: true
     alertmanagerSpec:
       replicas: "{{ alertmanager_replicas | default(1) }}"
-      
+
       # Resource configuration
       resources: "{{ alertmanager_resources }}"
-      
+
       # Storage configuration
       storage:
         volumeClaimTemplate:
@@ -250,20 +250,20 @@ kube_prometheus_values:
             resources:
               requests:
                 storage: "{{ alertmanager_storage_size | default('5Gi') }}"
-      
+
       # Security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
         fsGroup: 65534
-      
+
       # Alertmanager configuration
       configSecret: ""  # Use default config from chart
-  
+
   # Node Exporter configuration
   nodeExporter:
     enabled: true
-    
+
     # Resource configuration
     resources:
       requests:
@@ -272,11 +272,11 @@ kube_prometheus_values:
       limits:
         cpu: 200m
         memory: 128Mi
-  
+
   # Kube State Metrics configuration
   kubeStateMetrics:
     enabled: true
-    
+
     # Resource configuration
     resources:
       requests:
@@ -285,11 +285,11 @@ kube_prometheus_values:
       limits:
         cpu: 200m
         memory: 256Mi
-  
+
   # Prometheus Operator configuration
   prometheusOperator:
     enabled: true
-    
+
     # Resource configuration
     resources:
       requests:
@@ -298,20 +298,20 @@ kube_prometheus_values:
       limits:
         cpu: 500m
         memory: 512Mi
-    
+
     # Admission webhooks
     admissionWebhooks:
       enabled: true
       patch:
         enabled: true
-  
+
   # Kubernetes component scraping
   kubeApiServer:
     enabled: true
-  
+
   kubelet:
     enabled: true
-    
+
   kubeControllerManager:
     enabled: true
     endpoints:
@@ -320,7 +320,7 @@ kube_prometheus_values:
       enabled: true
       port: 10257
       targetPort: 10257
-  
+
   kubeScheduler:
     enabled: true
     endpoints:
@@ -329,13 +329,13 @@ kube_prometheus_values:
       enabled: true
       port: 10259
       targetPort: 10259
-  
+
   kubeProxy:
     enabled: false  # K3s doesn't use kube-proxy
-  
+
   kubeEtcd:
     enabled: false  # K3s etcd doesn't expose metrics by default
-  
+
   # CoreDNS monitoring
   coreDns:
     enabled: true
@@ -349,4 +349,4 @@ alert_notification_channels: []
 #     settings:
 #       url: "{{ slack_webhook_url }}"
 #       channel: "#alerts"
-#       title: "K3s Cluster Alert" 
+#       title: "K3s Cluster Alert"

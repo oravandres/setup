@@ -36,23 +36,23 @@
       VIP_ADDRESS="10.0.0.10"
       VIP_PORT="6443"
       KUBECONFIG="/etc/rancher/k3s/k3s.yaml"
-      
+
       # Test parameters
       API_TIMEOUT="10"
       FAILOVER_TIMEOUT="30"
       RECOVERY_TIMEOUT="60"
       PING_INTERVAL="0.5"
-      
+
       # Logging
       LOG_DIR="/var/log/ha-testing"
       LOG_FILE="$LOG_DIR/ha-test-$(date +%Y%m%d-%H%M%S).log"
-      
+
       # Master nodes (update based on your inventory)
       MASTER_NODES=({% for host in groups['k3s_servers'] %}"{{ hostvars[host]['ansible_host'] | default(host) }}"{% if not loop.last %} {% endif %}{% endfor %})
-      
+
       # Services to test
       SERVICES=("k3s" "haproxy" "keepalived")
-      
+
       # Test scenarios
       SCENARIOS=("service_stop" "service_kill" "node_isolation" "resource_exhaustion")
     dest: /etc/ha-testing/config.sh
@@ -66,15 +66,15 @@
     content: |
       #!/bin/bash
       source /etc/ha-testing/config.sh
-      
+
       # VIP monitoring and measurement functions
-      
+
       check_vip_owner() {
           local node=$1
           ssh -o ConnectTimeout=5 -o BatchMode=yes "$node" \
               "ip addr show | grep -q '$VIP_ADDRESS/' && echo 'ACTIVE' || echo 'INACTIVE'" 2>/dev/null || echo "UNREACHABLE"
       }
-      
+
       find_vip_owner() {
           for node in "${MASTER_NODES[@]}"; do
               status=$(check_vip_owner "$node")
@@ -86,27 +86,27 @@
           echo "NONE"
           return 1
       }
-      
+
       test_api_connectivity() {
           local timeout=${1:-$API_TIMEOUT}
           curl -k -s --max-time "$timeout" "https://$VIP_ADDRESS:$VIP_PORT/healthz" >/dev/null 2>&1
           return $?
       }
-      
+
       test_kubectl_connectivity() {
           local timeout=${1:-$API_TIMEOUT}
           timeout "$timeout" kubectl --kubeconfig="$KUBECONFIG" get nodes >/dev/null 2>&1
           return $?
       }
-      
+
       measure_vip_failover_time() {
           local original_owner=$1
           local start_time=$(date +%s.%N)
           local new_owner=""
           local elapsed=0
-          
+
           echo "$(date): Monitoring VIP failover from $original_owner..." | tee -a "$LOG_FILE"
-          
+
           while [ $elapsed -lt $FAILOVER_TIMEOUT ]; do
               new_owner=$(find_vip_owner)
               if [ "$new_owner" != "NONE" ] && [ "$new_owner" != "$original_owner" ]; then
@@ -119,17 +119,17 @@
               sleep $PING_INTERVAL
               elapsed=$(echo "$(date +%s.%N) - $start_time" | bc)
           done
-          
+
           echo "$(date): ERROR - VIP failover timeout after ${FAILOVER_TIMEOUT}s" | tee -a "$LOG_FILE"
           return 1
       }
-      
+
       measure_api_recovery_time() {
           local start_time=$(date +%s.%N)
           local elapsed=0
-          
+
           echo "$(date): Monitoring API recovery..." | tee -a "$LOG_FILE"
-          
+
           while [ $elapsed -lt $RECOVERY_TIMEOUT ]; do
               if test_api_connectivity 5; then
                   local end_time=$(date +%s.%N)
@@ -141,11 +141,11 @@
               sleep $PING_INTERVAL
               elapsed=$(echo "$(date +%s.%N) - $start_time" | bc)
           done
-          
+
           echo "$(date): ERROR - API recovery timeout after ${RECOVERY_TIMEOUT}s" | tee -a "$LOG_FILE"
           return 1
       }
-      
+
       # Export functions for use in other scripts
       export -f check_vip_owner find_vip_owner test_api_connectivity test_kubectl_connectivity
       export -f measure_vip_failover_time measure_api_recovery_time
@@ -161,108 +161,108 @@
       #!/bin/bash
       source /etc/ha-testing/config.sh
       source /usr/local/bin/ha-testing/vip-monitor.sh
-      
+
       # Service failure testing functions
-      
+
       test_service_stop() {
           local target_node=$1
           local service=$2
           local test_name="service_stop_${service}_${target_node//./}"
-          
+
           echo "$(date): Starting test: $test_name" | tee -a "$LOG_FILE"
-          
+
           # Get initial state
           local original_owner=$(find_vip_owner)
           if [ "$original_owner" = "NONE" ]; then
               echo "$(date): ERROR - No VIP owner found before test" | tee -a "$LOG_FILE"
               return 1
           fi
-          
+
           # Only proceed if target node owns VIP
           if [ "$original_owner" != "$target_node" ]; then
               echo "$(date): SKIP - Target node $target_node does not own VIP (owner: $original_owner)" | tee -a "$LOG_FILE"
               return 0
           fi
-          
+
           # Record pre-test API status
           if test_api_connectivity; then
               echo "$(date): Pre-test API check: SUCCESS" | tee -a "$LOG_FILE"
           else
               echo "$(date): WARNING - API not accessible before test" | tee -a "$LOG_FILE"
           fi
-          
+
           # Stop the service
           echo "$(date): Stopping $service on $target_node" | tee -a "$LOG_FILE"
           ssh -o BatchMode=yes "$target_node" "sudo systemctl stop $service" 2>/dev/null
-          
+
           # Measure failover time
           local failover_time
           failover_time=$(measure_vip_failover_time "$original_owner")
           local failover_success=$?
-          
+
           # Measure API recovery time
           local api_recovery_time
           api_recovery_time=$(measure_api_recovery_time)
           local api_success=$?
-          
+
           # Restart the service
           echo "$(date): Restarting $service on $target_node" | tee -a "$LOG_FILE"
           ssh -o BatchMode=yes "$target_node" "sudo systemctl start $service" 2>/dev/null
-          
+
           # Record results
           echo "$(date): Test results for $test_name:" | tee -a "$LOG_FILE"
           echo "  - VIP failover: $([ $failover_success -eq 0 ] && echo "SUCCESS (${failover_time}s)" || echo "FAILED")" | tee -a "$LOG_FILE"
           echo "  - API recovery: $([ $api_success -eq 0 ] && echo "SUCCESS (${api_recovery_time}s)" || echo "FAILED")" | tee -a "$LOG_FILE"
-          
+
           return $(($failover_success + $api_success))
       }
-      
+
       test_service_kill() {
           local target_node=$1
           local service=$2
           local test_name="service_kill_${service}_${target_node//./}"
-          
+
           echo "$(date): Starting test: $test_name" | tee -a "$LOG_FILE"
-          
+
           # Get initial state
           local original_owner=$(find_vip_owner)
           if [ "$original_owner" = "NONE" ]; then
               echo "$(date): ERROR - No VIP owner found before test" | tee -a "$LOG_FILE"
               return 1
           fi
-          
+
           # Only proceed if target node owns VIP
           if [ "$original_owner" != "$target_node" ]; then
               echo "$(date): SKIP - Target node $target_node does not own VIP (owner: $original_owner)" | tee -a "$LOG_FILE"
               return 0
           fi
-          
+
           # Kill the service process
           echo "$(date): Killing $service processes on $target_node" | tee -a "$LOG_FILE"
           ssh -o BatchMode=yes "$target_node" "sudo pkill -9 -f $service" 2>/dev/null
-          
+
           # Measure failover time
           local failover_time
           failover_time=$(measure_vip_failover_time "$original_owner")
           local failover_success=$?
-          
+
           # Measure API recovery time
           local api_recovery_time
           api_recovery_time=$(measure_api_recovery_time)
           local api_success=$?
-          
+
           # Restart the service
           echo "$(date): Restarting $service on $target_node" | tee -a "$LOG_FILE"
           ssh -o BatchMode=yes "$target_node" "sudo systemctl restart $service" 2>/dev/null
-          
+
           # Record results
           echo "$(date): Test results for $test_name:" | tee -a "$LOG_FILE"
           echo "  - VIP failover: $([ $failover_success -eq 0 ] && echo "SUCCESS (${failover_time}s)" || echo "FAILED")" | tee -a "$LOG_FILE"
           echo "  - API recovery: $([ $api_success -eq 0 ] && echo "SUCCESS (${api_recovery_time}s)" || echo "FAILED")" | tee -a "$LOG_FILE"
-          
+
           return $(($failover_success + $api_success))
       }
-      
+
       # Export functions
       export -f test_service_stop test_service_kill
     dest: /usr/local/bin/ha-testing/service-testing.sh
@@ -277,81 +277,81 @@
       #!/bin/bash
       source /etc/ha-testing/config.sh
       source /usr/local/bin/ha-testing/vip-monitor.sh
-      
+
       # Network isolation testing functions
-      
+
       test_network_isolation() {
           local target_node=$1
           local test_name="network_isolation_${target_node//./}"
-          
+
           echo "$(date): Starting test: $test_name" | tee -a "$LOG_FILE"
-          
+
           # Get initial state
           local original_owner=$(find_vip_owner)
           if [ "$original_owner" = "NONE" ]; then
               echo "$(date): ERROR - No VIP owner found before test" | tee -a "$LOG_FILE"
               return 1
           fi
-          
+
           # Only proceed if target node owns VIP
           if [ "$original_owner" != "$target_node" ]; then
               echo "$(date): SKIP - Target node $target_node does not own VIP (owner: $original_owner)" | tee -a "$LOG_FILE"
               return 0
           fi
-          
+
           # Block API server port
           echo "$(date): Blocking API server port on $target_node" | tee -a "$LOG_FILE"
           ssh -o BatchMode=yes "$target_node" "sudo iptables -I INPUT -p tcp --dport $VIP_PORT -j DROP" 2>/dev/null
-          
+
           # Measure failover time
           local failover_time
           failover_time=$(measure_vip_failover_time "$original_owner")
           local failover_success=$?
-          
+
           # Measure API recovery time
           local api_recovery_time
           api_recovery_time=$(measure_api_recovery_time)
           local api_success=$?
-          
+
           # Restore network access
           echo "$(date): Restoring network access on $target_node" | tee -a "$LOG_FILE"
           ssh -o BatchMode=yes "$target_node" "sudo iptables -D INPUT -p tcp --dport $VIP_PORT -j DROP" 2>/dev/null
-          
+
           # Record results
           echo "$(date): Test results for $test_name:" | tee -a "$LOG_FILE"
           echo "  - VIP failover: $([ $failover_success -eq 0 ] && echo "SUCCESS (${failover_time}s)" || echo "FAILED")" | tee -a "$LOG_FILE"
           echo "  - API recovery: $([ $api_success -eq 0 ] && echo "SUCCESS (${api_recovery_time}s)" || echo "FAILED")" | tee -a "$LOG_FILE"
-          
+
           return $(($failover_success + $api_success))
       }
-      
+
       test_resource_exhaustion() {
           local target_node=$1
           local test_name="resource_exhaustion_${target_node//./}"
-          
+
           echo "$(date): Starting test: $test_name" | tee -a "$LOG_FILE"
-          
+
           # Get initial state
           local original_owner=$(find_vip_owner)
           if [ "$original_owner" = "NONE" ]; then
               echo "$(date): ERROR - No VIP owner found before test" | tee -a "$LOG_FILE"
               return 1
           fi
-          
+
           # Only proceed if target node owns VIP
           if [ "$original_owner" != "$target_node" ]; then
               echo "$(date): SKIP - Target node $target_node does not own VIP (owner: $original_owner)" | tee -a "$LOG_FILE"
               return 0
           fi
-          
+
           # Start CPU stress test
           echo "$(date): Starting CPU stress on $target_node" | tee -a "$LOG_FILE"
           ssh -o BatchMode=yes "$target_node" "sudo stress-ng --cpu 0 --timeout 30s" 2>/dev/null &
           local stress_pid=$!
-          
+
           # Monitor for potential failover (resource exhaustion might not trigger immediate failover)
           sleep 15
-          
+
           # Check if VIP moved due to resource exhaustion
           local current_owner=$(find_vip_owner)
           if [ "$current_owner" != "$original_owner" ]; then
@@ -361,7 +361,7 @@
               echo "$(date): VIP remained on $original_owner during resource exhaustion" | tee -a "$LOG_FILE"
               local failover_success=1
           fi
-          
+
           # Test API responsiveness under load
           local api_start_time=$(date +%s.%N)
           if test_api_connectivity 30; then
@@ -373,19 +373,19 @@
               echo "$(date): API became unresponsive under load" | tee -a "$LOG_FILE"
               local api_success=1
           fi
-          
+
           # Stop stress test
           kill $stress_pid 2>/dev/null
           wait $stress_pid 2>/dev/null
-          
+
           # Record results
           echo "$(date): Test results for $test_name:" | tee -a "$LOG_FILE"
           echo "  - VIP stability: $([ $failover_success -eq 1 ] && echo "STABLE" || echo "FAILED_OVER")" | tee -a "$LOG_FILE"
           echo "  - API responsiveness: $([ $api_success -eq 0 ] && echo "MAINTAINED" || echo "DEGRADED")" | tee -a "$LOG_FILE"
-          
+
           return $api_success
       }
-      
+
       # Export functions
       export -f test_network_isolation test_resource_exhaustion
     dest: /usr/local/bin/ha-testing/network-testing.sh
@@ -400,51 +400,51 @@
       #!/bin/bash
       # Comprehensive HA Control Plane Test Suite
       # Executes all defined test scenarios and generates a detailed report
-      
+
       set -e
-      
+
       source /etc/ha-testing/config.sh
       source /usr/local/bin/ha-testing/vip-monitor.sh
       source /usr/local/bin/ha-testing/service-testing.sh
       source /usr/local/bin/ha-testing/network-testing.sh
-      
+
       # Test execution and reporting
-      
+
       run_all_tests() {
           local total_tests=0
           local passed_tests=0
           local failed_tests=0
           local start_time=$(date +%s)
-          
+
           echo "$(date): Starting comprehensive HA test suite" | tee -a "$LOG_FILE"
           echo "$(date): Testing VIP: $VIP_ADDRESS:$VIP_PORT" | tee -a "$LOG_FILE"
           echo "$(date): Master nodes: ${MASTER_NODES[*]}" | tee -a "$LOG_FILE"
           echo "$(date): Log file: $LOG_FILE" | tee -a "$LOG_FILE"
           echo "================================================================" | tee -a "$LOG_FILE"
-          
+
           # Pre-test validation
           echo "$(date): Running pre-test validation..." | tee -a "$LOG_FILE"
-          
+
           local initial_owner=$(find_vip_owner)
           if [ "$initial_owner" = "NONE" ]; then
               echo "$(date): FATAL - No VIP owner found. Cannot proceed with testing." | tee -a "$LOG_FILE"
               exit 1
           fi
-          
+
           echo "$(date): Initial VIP owner: $initial_owner" | tee -a "$LOG_FILE"
-          
+
           if ! test_api_connectivity; then
               echo "$(date): FATAL - API not accessible via VIP. Cannot proceed with testing." | tee -a "$LOG_FILE"
               exit 1
           fi
-          
+
           echo "$(date): Pre-test API connectivity: SUCCESS" | tee -a "$LOG_FILE"
           echo "================================================================" | tee -a "$LOG_FILE"
-          
+
           # Test each master node
           for node in "${MASTER_NODES[@]}"; do
               echo "$(date): Testing node: $node" | tee -a "$LOG_FILE"
-              
+
               # Test service stop scenarios
               for service in "${SERVICES[@]}"; do
                   total_tests=$((total_tests + 1))
@@ -453,12 +453,12 @@
                   else
                       failed_tests=$((failed_tests + 1))
                   fi
-                  
+
                   # Wait between tests
                   echo "$(date): Waiting 10s between tests..." | tee -a "$LOG_FILE"
                   sleep 10
               done
-              
+
               # Test service kill scenarios
               for service in "${SERVICES[@]}"; do
                   total_tests=$((total_tests + 1))
@@ -467,12 +467,12 @@
                   else
                       failed_tests=$((failed_tests + 1))
                   fi
-                  
+
                   # Wait between tests
                   echo "$(date): Waiting 10s between tests..." | tee -a "$LOG_FILE"
                   sleep 10
               done
-              
+
               # Test network isolation
               total_tests=$((total_tests + 1))
               if test_network_isolation "$node"; then
@@ -480,11 +480,11 @@
               else
                   failed_tests=$((failed_tests + 1))
               fi
-              
+
               # Wait between tests
               echo "$(date): Waiting 10s between tests..." | tee -a "$LOG_FILE"
               sleep 10
-              
+
               # Test resource exhaustion
               total_tests=$((total_tests + 1))
               if test_resource_exhaustion "$node"; then
@@ -492,15 +492,15 @@
               else
                   failed_tests=$((failed_tests + 1))
               fi
-              
+
               # Wait between node tests
               echo "$(date): Waiting 15s before testing next node..." | tee -a "$LOG_FILE"
               sleep 15
           done
-          
+
           # Final validation
           echo "$(date): Running post-test validation..." | tee -a "$LOG_FILE"
-          
+
           local final_owner=$(find_vip_owner)
           if [ "$final_owner" = "NONE" ]; then
               echo "$(date): WARNING - No VIP owner found after testing" | tee -a "$LOG_FILE"
@@ -508,18 +508,18 @@
           else
               echo "$(date): Final VIP owner: $final_owner" | tee -a "$LOG_FILE"
           fi
-          
+
           if test_api_connectivity; then
               echo "$(date): Post-test API connectivity: SUCCESS" | tee -a "$LOG_FILE"
           else
               echo "$(date): WARNING - API not accessible after testing" | tee -a "$LOG_FILE"
               failed_tests=$((failed_tests + 1))
           fi
-          
+
           # Generate final report
           local end_time=$(date +%s)
           local test_duration=$((end_time - start_time))
-          
+
           echo "================================================================" | tee -a "$LOG_FILE"
           echo "$(date): HA TEST SUITE COMPLETED" | tee -a "$LOG_FILE"
           echo "================================================================" | tee -a "$LOG_FILE"
@@ -529,7 +529,7 @@
           echo "Failed: $failed_tests" | tee -a "$LOG_FILE"
           echo "Success Rate: $(echo "scale=2; $passed_tests * 100 / $total_tests" | bc)%" | tee -a "$LOG_FILE"
           echo "================================================================" | tee -a "$LOG_FILE"
-          
+
           # Return appropriate exit code
           if [ $failed_tests -eq 0 ]; then
               echo "$(date): All tests PASSED! HA setup is functioning correctly." | tee -a "$LOG_FILE"
@@ -539,7 +539,7 @@
               return 1
           fi
       }
-      
+
       # Script entry point
       case "${1:-full}" in
           "full")
@@ -622,45 +622,45 @@
   debug:
     msg: |
       ✅ HA Control Plane Testing Framework Deployed Successfully!
-      
+
       🔧 Test Components Installed:
       - VIP monitoring and measurement tools
       - Service failure testing (graceful stop, force kill)
       - Network isolation testing (iptables blocking)
       - Resource exhaustion testing (CPU stress)
       - Comprehensive test suite with detailed reporting
-      
+
       🎯 Test Capabilities:
       - Automatic VIP failover time measurement
       - API availability monitoring during failures
       - Multi-scenario testing across all master nodes
       - Detailed logging and result reporting
       - SSH key distribution for inter-node testing
-      
+
       🚀 Quick Start Commands:
       - Basic validation: /usr/local/bin/ha-test-suite validate
       - Full test suite: /usr/local/bin/ha-test-suite full
       - View logs: tail -f /var/log/ha-testing/ha-test-*.log
-      
+
       📊 Test Scenarios Covered:
       - Service stop/restart (k3s, haproxy, keepalived)
       - Process termination (kill -9)
       - Network isolation (port blocking)
       - Resource exhaustion (CPU stress testing)
-      
+
       🔍 Monitoring Features:
       - VIP owner detection and tracking
       - Failover time measurement (target: <2s)
       - API recovery time tracking
       - Comprehensive success/failure reporting
-      
+
       📋 Next Steps:
       1. Run validation: /usr/local/bin/ha-test-suite validate
       2. Execute full test suite: /usr/local/bin/ha-test-suite full
       3. Review results in /var/log/ha-testing/
       4. Integrate with CI/CD for automated testing
-      
+
       ⚠️ Important: Tests will temporarily disrupt services on individual nodes
       but should not affect overall cluster availability due to HA design!
   run_once: true
-  when: inventory_hostname == groups['k3s_servers'][0] 
+  when: inventory_hostname == groups['k3s_servers'][0]

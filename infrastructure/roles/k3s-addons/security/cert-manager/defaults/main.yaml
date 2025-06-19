@@ -55,4 +55,4 @@ wildcard_cert_namespace: "default"  # Namespace for wildcard cert
 organization_name: "HomeCluster"    # Organization name for certificates
 
 # Domain configuration (must be provided externally)
-# base_domain: ""           # Required if creating wildcard certs 
+# base_domain: ""           # Required if creating wildcard certs

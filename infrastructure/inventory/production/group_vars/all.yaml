@@ -70,4 +70,4 @@ enable_gpu_support: true
 enable_chaos_testing: true
 enable_monitoring: true
 enable_logging: true
-enable_backup: true 
+enable_backup: true

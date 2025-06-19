@@ -10,7 +10,7 @@
     # Generate secure cluster token
     k3s_token_file: "/tmp/k3s-token-{{ ansible_date_time.epoch }}"
     cleanup_existing: true
-  
+
   tasks:
     - name: "Generate secure K3s cluster token"
       shell: openssl rand -hex 32
@@ -51,7 +51,7 @@
 
     - name: "Gather basic system information"
       setup:
-        gather_subset: 
+        gather_subset:
           - "!all"
           - "!any"
           - "min"
@@ -88,14 +88,14 @@
     - name: "Run K3s server uninstall script"
       shell: /usr/local/bin/k3s-uninstall.sh
       ignore_errors: true
-      when: 
+      when:
         - cleanup_existing | default(true)
         - inventory_hostname in groups['control_plane']
 
     - name: "Run K3s agent uninstall script"
       shell: /usr/local/bin/k3s-agent-uninstall.sh
       ignore_errors: true
-      when: 
+      when:
         - cleanup_existing | default(true)
         - inventory_hostname in groups['workers']
 
@@ -227,4 +227,4 @@
           - "  3. Set up GitOps platform (ArgoCD)"
           - "  4. Configure observability stack"
           - ""
-          - "🚀 Cluster is ready for application deployments!" 
+          - "🚀 Cluster is ready for application deployments!"

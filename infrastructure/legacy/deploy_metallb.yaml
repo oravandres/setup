@@ -5,7 +5,7 @@
   gather_facts: true
   vars:
     kubeconfig_path: "{{ ansible_env.HOME }}/.kube/k3s-config"
-  
+
   tasks:
     - name: Verify K3s cluster is accessible
       shell: kubectl get nodes --no-headers | wc -l
@@ -52,7 +52,7 @@
         content: |
           # MetalLB configuration optimized for heterogeneous cluster
           # Provides load balancing for services in bare-metal environment
-          
+
           controller:
             # Resource limits for controller
             resources:
@@ -62,11 +62,11 @@
               requests:
                 cpu: 100m
                 memory: 100Mi
-            
+
             # Node affinity - prefer control plane nodes
             nodeSelector:
               node-role.kubernetes.io/control-plane: "true"
-            
+
             # Multi-arch tolerations
             tolerations:
               - key: "arm"
@@ -80,7 +80,7 @@
               - key: "node-role.kubernetes.io/control-plane"
                 operator: "Exists"
                 effect: "NoSchedule"
-          
+
           speaker:
             # Resource limits for speaker
             resources:
@@ -90,7 +90,7 @@
               requests:
                 cpu: 100m
                 memory: 100Mi
-            
+
             # Multi-arch tolerations
             tolerations:
               - key: "arm"
@@ -104,18 +104,18 @@
               - key: "node-role.kubernetes.io/control-plane"
                 operator: "Exists"
                 effect: "NoSchedule"
-            
+
             # Enable memberlist for speaker coordination
             memberlist:
               enabled: true
-              
+
           # Prometheus monitoring integration
           prometheus:
             serviceAccount: prometheus-kube-prometheus-prometheus
             namespace: monitoring
             serviceMonitor:
               enabled: false  # Disable for now, enable after monitoring stack is deployed
-              
+
           # FRR mode for advanced routing (optional)
           frrk8s:
             enabled: false
@@ -279,16 +279,16 @@
           - Controller running: {{ metallb_controller.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
           - Speakers running: {{ metallb_speakers.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
           - IP Pool: 192.168.1.200-192.168.1.220
-          
+
           🌐 Test LoadBalancer Service:
           - Test Service IP: {{ test_lb_service.resources[0].status.loadBalancer.ingress[0].ip if test_lb_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
           - Test URL: http://{{ test_lb_service.resources[0].status.loadBalancer.ingress[0].ip if test_lb_service.resources[0].status.loadBalancer.ingress is defined else 'PENDING' }}
-          
+
           📖 Next Steps:
           1. Test LoadBalancer: curl http://{{ test_lb_service.resources[0].status.loadBalancer.ingress[0].ip if test_lb_service.resources[0].status.loadBalancer.ingress is defined else 'TEST_IP' }}
           2. Deploy Ingress NGINX Controller (Task 2)
           3. Deploy HAProxy for K3s API HA (Task 3)
-          
+
           ✅ Task 1 Complete: MetalLB Load Balancer deployed successfully!
 
     - name: Test LoadBalancer connectivity
@@ -312,4 +312,4 @@
     - name: Clean up temporary values file
       file:
         path: /tmp/metallb-values.yaml
-        state: absent 
+        state: absent

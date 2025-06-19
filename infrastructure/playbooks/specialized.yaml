@@ -7,12 +7,12 @@
   become: true
   gather_facts: true
   tags: ['specialized', 'gpu']
-  
+
   tasks:
     - name: "Include GPU role"
       include_role:
         name: gpu
-      when: 
+      when:
         - inventory_hostname in groups['k3s_cluster']
         - gpu_support_enabled | default(false)
 
@@ -22,7 +22,7 @@
   gather_facts: true
   run_once: true
   tags: ['specialized', 'chaos']
-  
+
   tasks:
     - name: "Include chaos-testing role"
       include_role:
@@ -35,7 +35,7 @@
   gather_facts: false
   become: false
   tags: ['verify']
-  
+
   tasks:
     - name: "Check GPU device plugin status"
       shell: |
@@ -68,4 +68,4 @@
           - "  • GPU workload support (if enabled)"
           - "  • Chaos engineering experiments"
           - "  • Resilience testing platform"
-          - "  • Fault injection capabilities" 
+          - "  • Fault injection capabilities"

@@ -20,7 +20,7 @@ ingress_nginx_controller:
     image: "ingress-nginx/controller"
     tag: "v1.9.5"
     digest: ""
-  
+
   # Service configuration
   service:
     type: "LoadBalancer"
@@ -28,7 +28,7 @@ ingress_nginx_controller:
     annotations:
       metallb.universe.tf/address-pool: "default-pool"
       metallb.universe.tf/allow-shared-ip: "ingress-nginx"
-    
+
     # Port configuration
     ports:
       http: 80
@@ -36,7 +36,7 @@ ingress_nginx_controller:
     targetPorts:
       http: http
       https: https
-    
+
     # External traffic policy
     externalTrafficPolicy: "Local"
     sessionAffinity: "None"
@@ -53,11 +53,11 @@ ingress_nginx_controller:
   # Replica configuration
   replicaCount: 2
   minAvailable: 1
-  
+
   # Node selection
   nodeSelector:
     kubernetes.io/arch: "amd64"  # Prefer x86 nodes for better performance
-  
+
   # Tolerations
   tolerations:
     - key: "node-role.kubernetes.io/control-plane"
@@ -85,29 +85,29 @@ ingress_nginx_config:
   ssl-prefer-server-ciphers: "true"
   ssl-session-cache: "shared:SSL:10m"
   ssl-session-timeout: "10m"
-  
+
   # Security headers
   enable-real-ip: "true"
   forwarded-for-header: "X-Forwarded-For"
   compute-full-forwarded-for: "true"
   use-forwarded-headers: "true"
-  
+
   # Performance settings
   worker-processes: "auto"
   worker-connections: "1024"
   max-worker-connections: "16384"
   max-worker-open-files: "65536"
-  
+
   # Proxy settings
   proxy-connect-timeout: "5"
   proxy-send-timeout: "60"
   proxy-read-timeout: "60"
   proxy-body-size: "1m"
-  
+
   # Rate limiting
   rate-limit: "100"
   rate-limit-window: "1m"
-  
+
   # Logging
   log-format-json: "true"
   access-log-path: "/var/log/nginx/access.log"
@@ -121,7 +121,7 @@ ingress_nginx_default_backend:
     registry: "registry.k8s.io"
     image: "defaultbackend-amd64"
     tag: "1.5"
-  
+
   resources:
     limits:
       cpu: "10m"
@@ -135,7 +135,7 @@ ingress_nginx_admission_webhooks:
   enabled: true
   failurePolicy: "Fail"
   port: 8443
-  
+
   # Certificate configuration
   certificate: "/usr/local/certificates/cert"
   key: "/usr/local/certificates/key"
@@ -192,7 +192,7 @@ ingress_nginx_udp_services: {}
 # Custom error pages
 ingress_nginx_custom_error_pages:
   enabled: false
-  
+
 # ModSecurity WAF (disabled by default)
 ingress_nginx_modsecurity:
-  enabled: false 
+  enabled: false

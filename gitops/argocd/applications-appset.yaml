@@ -3,84 +3,28 @@ kind: ApplicationSet
 metadata:
   name: applications
   namespace: argocd
-  labels:
-    app.kubernetes.io/name: applications
-    app.kubernetes.io/part-of: gitops
 spec:
   generators:
-  - git:
-      repoURL: https://github.com/oravandres/setup
-      revision: HEAD
-      directories:
-      - path: gitops/applications/*
-      template:
-        metadata:
-          labels:
-            app.kubernetes.io/managed-by: argocd-applicationset
-        spec:
-          source:
-            repoURL: https://github.com/oravandres/setup
-            targetRevision: HEAD
-          project: default
-          destination:
-            server: https://kubernetes.default.svc
-  - list:
-      elements:
-      - environment: dev
-        cluster: k3s-dev-local
-        url: https://kubernetes.default.svc
-        namespace_suffix: "-dev"
-        values_file: environments/dev/values.yaml
-        auto_sync: true
-        description: "Local development environment"
-      - environment: production
-        cluster: k3s-production
-        url: https://kubernetes.default.svc
-        namespace_suffix: ""
-        values_file: environments/production/values.yaml
-        auto_sync: false  # Manual sync for production
-        description: "Production cluster environment"
-
+    - clusters:
+        selector:
+          matchLabels:
+            environment: "{{.values.environment}}"
   template:
     metadata:
-      name: '{{path.basename}}-{{environment}}'
-      labels:
-        environment: '{{environment}}'
-        cluster: '{{cluster}}'
-        component: application
-        application: '{{path.basename}}'
-        description: '{{description}}'
+      name: 'applications-{{.name}}'
     spec:
       project: default
       source:
-        repoURL: https://github.com/oravandres/setup
+        repoURL: https://github.com/your-org/k3s-homelab-setup
         targetRevision: HEAD
-        path: '{{path}}'
+        path: 'gitops/applications'
         helm:
           valueFiles:
-          - '../{{values_file}}'
-          parameters:
-          - name: global.environment
-            value: '{{environment}}'
-          - name: global.cluster
-            value: '{{cluster}}'
-          - name: global.namespace_suffix
-            value: '{{namespace_suffix}}'
+            - '../environments/{{.values.environment}}/values.yaml'
       destination:
-        server: '{{url}}'
-        namespace: '{{path.basename}}{{namespace_suffix}}'
+        server: '{{.server}}'
+        namespace: default
       syncPolicy:
         automated:
-          prune: '{{auto_sync}}'
-          selfHeal: '{{auto_sync}}'
-          allowEmpty: false
-        syncOptions:
-        - CreateNamespace=true
-        - PrunePropagationPolicy=foreground
-        retry:
-          limit: 3
-          backoff:
-            duration: 5s
-            factor: 2
-            maxDuration: 3m
-      revisionHistoryLimit: 5
+          prune: true
+          selfHeal: true

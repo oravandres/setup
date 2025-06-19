@@ -153,4 +153,4 @@
 - name: Display cert-manager validation results
   debug:
     var: cert_manager_validation.stdout_lines
-  run_once: true 
+  run_once: true

@@ -8,7 +8,7 @@
   gather_facts: true
   run_once: true
   tags: ['security', 'tls', 'cert-manager']
-  
+
   tasks:
     - name: "Include cert-manager role"
       include_role:
@@ -21,7 +21,7 @@
   gather_facts: true
   run_once: true
   tags: ['security', 'dns', 'external-dns']
-  
+
   tasks:
     - name: "Include External-DNS role"
       include_role:
@@ -34,7 +34,7 @@
   gather_facts: true
   run_once: true
   tags: ['security', 'tls']
-  
+
   tasks:
     - name: "Include TLS role"
       include_role:
@@ -47,7 +47,7 @@
   gather_facts: true
   run_once: true
   tags: ['security', 'sealed-secrets', 'gitops']
-  
+
   tasks:
     - name: "Include Sealed Secrets role"
       include_role:
@@ -60,7 +60,7 @@
   gather_facts: false
   become: false
   tags: ['verify']
-  
+
   tasks:
     - name: "Wait for cert-manager to be ready"
       shell: |
@@ -104,4 +104,4 @@
           - "  • GitOps-compatible secret management"
           - "  • Encrypted secrets in Git repository"
           - "  • Let's Encrypt integration"
-          - "  • Wildcard certificate support" 
+          - "  • Wildcard certificate support"

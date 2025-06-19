@@ -67,4 +67,4 @@
     msg:
       - "kubectl version: {{ kubectl_version.stdout }}"
       - "kubectl installed successfully"
-      - "You can now use kubectl to interact with Kubernetes clusters" 
+      - "You can now use kubectl to interact with Kubernetes clusters"

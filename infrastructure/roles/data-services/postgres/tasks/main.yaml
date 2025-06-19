@@ -7,7 +7,7 @@
       kubectl label nodes $PC_NODE node-type=pc --overwrite
       kubectl label nodes $PC_NODE postgres-preferred=true --overwrite
     fi
-    
+
     # Label Pi nodes
     kubectl get nodes -o wide --no-headers | grep -E 'arm64|aarch64' | while read line; do
       NODE=$(echo $line | awk '{print $1}')
@@ -35,7 +35,7 @@
   copy:
     content: |
       # PostgreSQL HA configuration optimized for heterogeneous cluster (1 PC + 6 Pis)
-      
+
       # Global configuration
       global:
         postgresql:
@@ -47,12 +47,12 @@
             replicationUsername: "replicator"
             replicationPassword: "replicator123"  # Change in production!
         storageClass: "local-path"
-      
+
       # PostgreSQL Primary configuration
       postgresql:
         # HA setup with 1 primary + 2 read replicas
         replicaCount: 1  # Primary instance
-        
+
         # Resource limits optimized for Pi 4B 8GB but capable on PC
         resources:
           limits:
@@ -61,7 +61,7 @@
           requests:
             cpu: 500m       # Ensures scheduling on Pi
             memory: 1Gi     # Conservative start
-        
+
         # PostgreSQL configuration
         postgresqlConfiguration:
           max_connections: "100"
@@ -80,7 +80,7 @@
           max_parallel_workers_per_gather: "2"
           max_parallel_workers: "4"
           max_parallel_maintenance_workers: "2"
-        
+
         # Storage configuration
         persistence:
           enabled: true
@@ -88,7 +88,7 @@
           storageClass: "local-path"
           accessModes:
             - ReadWriteOnce
-        
+
         # Node affinity - prefer PC for primary
         affinity:
           nodeAffinity:
@@ -105,12 +105,12 @@
                     - key: postgres-preferred
                       operator: In
                       values: ["true"]
-        
+
         # Pod disruption budget
         podDisruptionBudget:
           create: true
           minAvailable: 1
-        
+
         # Tolerations for mixed architecture
         tolerations:
           - key: "arm"
@@ -121,12 +121,12 @@
             operator: "Equal"
             value: "arm64"
             effect: "NoSchedule"
-      
+
       # PostgreSQL Read Replicas configuration
       readReplicas:
         # 2 read replicas for HA
         replicaCount: 2
-        
+
         # Resource limits for read replicas (can be lighter)
         resources:
           limits:
@@ -135,7 +135,7 @@
           requests:
             cpu: 300m
             memory: 768Mi
-        
+
         # Storage for read replicas
         persistence:
           enabled: true
@@ -143,7 +143,7 @@
           storageClass: "local-path"
           accessModes:
             - ReadWriteOnce
-        
+
         # Distribution affinity - spread across nodes
         affinity:
           nodeAffinity:
@@ -169,7 +169,7 @@
                         operator: In
                         values: ["read"]
                   topologyKey: kubernetes.io/hostname
-        
+
         # Tolerations for mixed architecture
         tolerations:
           - key: "arm"
@@ -180,13 +180,13 @@
             operator: "Equal"
             value: "arm64"
             effect: "NoSchedule"
-      
+
       # Pgpool configuration (Connection pooling and load balancing)
       pgpool:
         # Enable Pgpool for connection pooling and load balancing
         enabled: true
         replicaCount: 2  # HA setup for Pgpool
-        
+
         # Resource limits for Pgpool (lightweight)
         resources:
           limits:
@@ -195,7 +195,7 @@
           requests:
             cpu: 200m
             memory: 256Mi
-        
+
         # Pgpool configuration
         configuration:
           listenAddresses: "*"
@@ -213,7 +213,7 @@
           max_pool: 4
           num_init_children: 32
           max_connections: 100
-        
+
         # Anti-affinity for Pgpool instances
         affinity:
           podAntiAffinity:
@@ -229,7 +229,7 @@
                         operator: In
                         values: ["pgpool"]
                   topologyKey: kubernetes.io/hostname
-        
+
         # Tolerations for mixed architecture
         tolerations:
           - key: "arm"
@@ -240,16 +240,16 @@
             operator: "Equal"
             value: "arm64"
             effect: "NoSchedule"
-      
+
       # Metrics and monitoring
       metrics:
         enabled: true
-        
+
         # Prometheus PostgreSQL exporter
         serviceMonitor:
           enabled: true
           namespace: "monitoring"  # If you have monitoring namespace
-        
+
         # Resource limits for metrics
         resources:
           limits:
@@ -258,15 +258,15 @@
           requests:
             cpu: 100m
             memory: 128Mi
-      
+
       # Backup configuration (optional)
       backup:
         enabled: false  # Can be enabled later with proper storage backend
-      
+
       # Network Policies (optional, for security)
       networkPolicy:
         enabled: false  # Can be enabled for production
-      
+
       # Service configuration
       service:
         type: ClusterIP
@@ -376,18 +376,18 @@
       - Pgpool pods running: {{ pgpool_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
       - Nodes used: {{ unique_postgres_nodes.stdout }}
       - HA Level: {{ 'TRUE HA' if (postgres_primary_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1 and postgres_replica_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 2 and unique_postgres_nodes.stdout | int >= 2) else 'PARTIAL HA' if (postgres_primary_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1 and postgres_replica_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1) else 'NO HA' }}
-      
+
       🌐 Connection Details:
       - External Access: {{ node_ip.stdout }}:30432
       - Internal Service: my-postgres-ha-postgresql-ha-pgpool.postgres.svc.cluster.local:5432
       - Primary Service: my-postgres-ha-postgresql-ha-postgresql.postgres.svc.cluster.local:5432
       - Read Service: my-postgres-ha-postgresql-ha-postgresql-read.postgres.svc.cluster.local:5432
-      
+
       🔐 Default Credentials:
       - Admin User: postgres / postgres123
       - App User: appuser / appuser123
       - Database: appdb
-      
+
       📊 Architecture:
       - 1x Primary PostgreSQL (read/write)
       - 2x Read Replicas (read-only)

@@ -30,7 +30,7 @@
     content: |
       # MetalLB configuration optimized for heterogeneous cluster
       # Provides load balancing for services in bare-metal environment
-      
+
       controller:
         # Resource limits for controller
         resources:
@@ -40,11 +40,11 @@
           requests:
             cpu: 100m
             memory: 100Mi
-        
+
         # Node affinity - prefer control plane nodes
         nodeSelector:
           node-role.kubernetes.io/control-plane: "true"
-        
+
         # Multi-arch tolerations
         tolerations:
           - key: "arm"
@@ -58,7 +58,7 @@
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"
             effect: "NoSchedule"
-      
+
       speaker:
         # Resource limits for speaker
         resources:
@@ -68,7 +68,7 @@
           requests:
             cpu: 100m
             memory: 100Mi
-        
+
         # Multi-arch tolerations
         tolerations:
           - key: "arm"
@@ -82,18 +82,18 @@
           - key: "node-role.kubernetes.io/control-plane"
             operator: "Exists"
             effect: "NoSchedule"
-        
+
         # Enable memberlist for speaker coordination
         memberlist:
           enabled: true
-          
+
       # Prometheus monitoring integration
       prometheus:
         serviceAccount: prometheus-kube-prometheus-prometheus
         serviceMonitor:
           enabled: true
           namespace: monitoring
-          
+
       # FRR mode for advanced routing (optional)
       frrk8s:
         enabled: false
@@ -248,16 +248,16 @@
       - Controller running: {{ metallb_controller.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
       - Speakers running: {{ metallb_speakers.resources | selectattr('status.phase', 'equalto', 'Running') | list | length }}
       - IP Pool: 10.0.0.30-10.0.0.50 (21 IPs available)
-      
+
       🌐 Load Balancer Services:
       - Test Service: Check with kubectl get svc metallb-test-service
-      
+
       📖 Next Steps:
       1. Validate deployment: /usr/local/bin/validate-metallb
       2. Deploy Ingress Controller for HTTP/HTTPS traffic (Task 2)
       3. Test LoadBalancer with: curl http://<TEST_LB_IP>
       4. K3s API VIP will be handled by HAProxy in Task 4 (10.0.0.10)
-      
+
       ⚠️  MetalLB v0.14 configured with Layer 2 mode for IP range 10.0.0.30-10.0.0.50
       🛠️  Validation script installed at: /usr/local/bin/validate-metallb
 
@@ -272,4 +272,4 @@
 - name: Clean up temporary values file
   file:
     path: /tmp/metallb-values.yaml
-    state: absent 
+    state: absent

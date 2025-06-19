@@ -1,7 +1,7 @@
 ---
 - name: Install Git
   apt:
-    name: 
+    name:
       - git
       - gh
     state: present
@@ -49,8 +49,8 @@
 
 - name: Display git configuration summary
   debug:
-    msg: 
+    msg:
       - "Git configuration completed for user: {{ ansible_user_id }}"
       - "User: Andres Orav <andres@orav.eu>"
       - "Editor: vim"
-      - "Default branch: main" 
+      - "Default branch: main"

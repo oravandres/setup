@@ -56,7 +56,7 @@ ingress-nginx:
       serviceMonitor:
         enabled: true
 
-# ArgoCD configuration  
+# ArgoCD configuration
 argo-cd:
   enabled: true
   global:
@@ -149,14 +149,14 @@ sealed-secrets:
   extraEnv:
     - name: "LOG_LEVEL"
       value: "info"
-    
+
 # Additional infrastructure components
 external-dns:
   enabled: false
   provider: cloudflare
-  
+
 vault:
   enabled: false
-  
+
 falco:
-  enabled: false 
+  enabled: false
