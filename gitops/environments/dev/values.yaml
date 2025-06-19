@@ -1,16 +1,16 @@
-# Development Environment Configuration
+# Development Environment Configuration - Localhost Only Setup
 ---
 global:
   environment: dev
-  domain: "dev.cluster.local"
-  cluster_name: "k3s-dev"
+  domain: "dev.localhost"
+  cluster_name: "k3s-dev-local"
   
-# ArgoCD Configuration
+# ArgoCD Configuration - Minimal for dev
 argocd:
-  enabled: true
-  domain: "argocd.dev.cluster.local"
-  admin_password: "admin123!"
-  cert_issuer: "letsencrypt-staging"
+  enabled: false  # Disabled for localhost dev - use production cluster for GitOps testing
+  domain: "argocd.dev.localhost"
+  admin_password: "dev123!"
+  cert_issuer: "selfsigned"  # Use self-signed for dev
   oidc_enabled: false
   resources:
     server:
@@ -28,10 +28,10 @@ argocd:
         cpu: 500m
         memory: 512Mi
 
-# cert-manager Configuration
+# cert-manager Configuration - Self-signed for dev
 cert_manager:
   enabled: true
-  cert_issuer: "letsencrypt-staging"
+  cert_issuer: "selfsigned"  # No external dependencies
   resources:
     requests:
       cpu: 10m
@@ -41,12 +41,11 @@ cert_manager:
       memory: 64Mi
   create_wildcard_cert: false
 
-# MetalLB Configuration  
+# MetalLB Configuration - Disabled for localhost
 metallb:
-  enabled: true
+  enabled: false  # Use NodePort services for localhost dev
   ip_pool:
-    addresses:
-      - "192.168.1.100-192.168.1.110"  # Dev range - smaller pool
+    addresses: []
   resources:
     controller:
       requests:
@@ -55,51 +54,45 @@ metallb:
       limits:
         cpu: 100m
         memory: 128Mi
-    speaker:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 100m
-        memory: 128Mi
 
-# Monitoring Configuration
+# Monitoring Configuration - Minimal stack
 monitoring:
   enabled: true
   prometheus:
-    retention: "7d"  # Shorter retention for dev
+    retention: "3d"  # Short retention for dev
     resources:
       requests:
-        cpu: 100m
-        memory: 512Mi
+        cpu: 50m
+        memory: 256Mi
       limits:
-        cpu: 500m
-        memory: 1Gi
+        cpu: 200m
+        memory: 512Mi
   grafana:
     enabled: true
-    admin_password: "grafana123"
+    admin_password: "dev123"
+    service_type: "NodePort"  # Easy localhost access
 
-# Ingress Configuration
+# Ingress Configuration - Minimal or disabled
 ingress:
-  enabled: true
+  enabled: false  # Use NodePort/port-forward for localhost
   class: "nginx"
-  tls_enabled: false  # Disable TLS for dev simplicity
+  tls_enabled: false
 
-# Storage Configuration
+# Storage Configuration - Local only
 storage:
   longhorn:
     enabled: false  # Use local storage in dev
   backup:
     enabled: false
 
-# Security Configuration
+# Security Configuration - Relaxed for dev
 security:
   networkpolicies: false  # Disabled for dev flexibility
   podsecuritypolicies: false
 
-# Sealed Secrets Configuration
+# Sealed Secrets Configuration - Simplified
 sealed_secrets:
-  enabled: true
+  enabled: false  # Use regular secrets for dev simplicity
   resources:
     requests:
       cpu: 50m
@@ -107,6 +100,23 @@ sealed_secrets:
     limits:
       cpu: 100m
       memory: 128Mi
-  metrics:
-    enabled: true
-  log_level: "debug"  # More verbose logging for dev 
+  log_level: "debug"
+
+# External DNS - Disabled for localhost
+external_dns:
+  enabled: false
+
+# Development-specific settings
+dev_settings:
+  # Enable development tools
+  kubectl_proxy: true
+  debug_logging: true
+  
+  # Resource limits are relaxed
+  resource_quotas_enabled: false
+  
+  # Fast feedback loop settings
+  reconciliation_interval: "30s"
+  
+  # Development convenience features
+  auto_restart_on_config_change: true 

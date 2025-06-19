@@ -10,19 +10,17 @@ spec:
   generators:
   - list:
       elements:
-      - cluster: k3s-dev
+      - cluster: k3s-dev-local
         url: https://kubernetes.default.svc
         environment: dev
         values_file: gitops/environments/dev/values.yaml
-      - cluster: k3s-staging  
-        url: https://k3s-staging.cluster.local
-        environment: staging
-        values_file: gitops/environments/staging/values.yaml
+        description: "Localhost development environment"
       - cluster: k3s-production
-        url: https://k3s-production.cluster.local  
+        url: https://kubernetes.default.svc
         environment: production
         values_file: gitops/environments/production/values.yaml
-        
+        description: "Production cluster environment"
+
   template:
     metadata:
       name: '{{cluster}}-infrastructure-core'
@@ -30,6 +28,7 @@ spec:
         environment: '{{environment}}'
         cluster: '{{cluster}}'
         component: infrastructure
+        description: '{{description}}'
     spec:
       project: default
       source:
@@ -62,4 +61,4 @@ spec:
             duration: 5s
             factor: 2
             maxDuration: 3m
-      revisionHistoryLimit: 10 
+      revisionHistoryLimit: 10

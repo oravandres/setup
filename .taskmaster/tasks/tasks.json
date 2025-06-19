@@ -515,11 +515,98 @@
             "testStrategy": "Run the full project test suite if available. Trigger CI/CD pipelines that use the affected files. Manually verify critical application configurations or deployments that depend on the renamed YAML files. Ensure documentation links are not broken."
           }
         ]
+      },
+      {
+        "id": 22,
+        "title": "Create Ingress Resources for Web UIs",
+        "description": "Set up ingress resources to expose ArgoCD, Grafana, and Prometheus web interfaces through the ingress-nginx controller.",
+        "details": "Create Kubernetes Ingress resources for the ArgoCD, Grafana, and Prometheus web UIs. Define specific hostnames for each service (e.g., `argocd.yourdomain.com`, `grafana.yourdomain.com`, `prometheus.yourdomain.com`). Configure the Ingress resources to route traffic to the correct Kubernetes Service and port for each application. Ensure the Ingress class is set to use the deployed ingress-nginx controller. Consider adding TLS termination using cert-manager (if implemented) or default ingress-nginx capabilities. Manage these Ingress manifests using GitOps principles, adding them to the appropriate application repository that ArgoCD monitors.",
+        "testStrategy": "Verify that the Ingress resources are successfully created in the cluster. Confirm that DNS records for the configured hostnames point to the ingress-nginx LoadBalancer IP. Access each web UI (ArgoCD, Grafana, Prometheus) using its assigned hostname in a web browser to ensure correct routing and accessibility. Check for any certificate errors if TLS is configured.",
+        "status": "pending",
+        "dependencies": [
+          2,
+          8
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 23,
+        "title": "Configure External-DNS for Automatic Domain Management",
+        "description": "Deploy and configure external-dns to automatically manage DNS records for ingress resources.",
+        "details": "Install External-DNS using Helm or kubectl. Configure External-DNS to watch for Ingress resources and integrate with a specific DNS provider (e.g., Cloudflare, AWS Route 53, Google Cloud DNS). This involves providing API credentials or necessary permissions to the DNS provider. Configure the `--source=ingress` flag and potentially `--ingress-class` or `--label-selector` to target specific Ingress resources. Set the `--domain-filter` to restrict which domains External-DNS manages. Ensure External-DNS has the necessary RBAC permissions to list and watch Ingresses and update DNS records.",
+        "testStrategy": "Deploy a simple application with an Ingress resource configured with a hostname within the domain filter. Verify that External-DNS creates the corresponding A/CNAME record in the configured DNS provider. Update the Ingress hostname and verify the DNS record is updated. Delete the Ingress resource and verify the DNS record is removed. Check External-DNS logs for successful API calls to the DNS provider.",
+        "status": "pending",
+        "dependencies": [
+          1,
+          2,
+          13
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 24,
+        "title": "Set up TLS Certificates with Let's Encrypt",
+        "description": "Configure cert-manager with Let's Encrypt ClusterIssuers for automatic TLS certificate provisioning. Set up both staging and production issuers for HTTPS security across all ingress resources.",
+        "details": "Install cert-manager using Helm or kubectl. Configure two ClusterIssuer resources:\n\n1.  `letsencrypt-staging`: Use the Let's Encrypt staging ACME server (`https://acme-staging-v02.api.letsencrypt.org/directory`). Configure it to use the HTTP01 challenge solver, pointing to the ingress-nginx controller.\n2.  `letsencrypt-production`: Use the Let's Encrypt production ACME server (`https://acme-v02.api.letsencrypt.org/directory`). Configure it similarly to the staging issuer, using the HTTP01 challenge solver.\n\nEnsure a valid email address is provided for both issuers for important notifications from Let's Encrypt. Document how Ingress resources should be annotated to request certificates from these issuers (e.g., `cert-manager.io/cluster-issuer: letsencrypt-production`).",
+        "testStrategy": "Verify that the cert-manager pods are running and healthy. Verify that both `letsencrypt-staging` and `letsencrypt-production` ClusterIssuers are created and in a ready state. Deploy a simple test application with an Ingress resource configured with a hostname and annotated to use the `letsencrypt-staging` issuer. Verify that a Certificate resource is created and that cert-manager successfully obtains a certificate from the staging environment. Access the application via HTTPS using the configured hostname and verify the staging certificate is served. Repeat the process, changing the annotation to use the `letsencrypt-production` issuer, and verify a production certificate is obtained and served via HTTPS.",
+        "status": "pending",
+        "dependencies": [
+          1,
+          2
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 25,
+        "title": "Deploy Sample Applications via GitOps",
+        "description": "Create manifests for simple sample applications and deploy them using the established ArgoCD GitOps workflow.",
+        "details": "Choose one or two simple, stateless applications (e.g., a basic Nginx web server, a 'hello world' app). Create Kubernetes manifests (Deployments, Services, Ingress - if needed for external access) for these applications. Store these manifests within the `gitops/applications/` directory structure established in Task 16. Define ArgoCD Application or ApplicationSet resources within the `gitops/argocd/` directory to point to the application manifests. Ensure the manifests and ArgoCD configurations are committed to the Git repository used by ArgoCD. Observe ArgoCD syncing the applications and deploying them to the cluster. Verify the application pods are running and healthy. If Ingress is used, verify external access via the configured hostname.",
+        "testStrategy": "Commit the sample application manifests and ArgoCD configurations to the Git repository. Monitor the ArgoCD UI to confirm the new applications appear and sync automatically. Verify the sync status becomes `Synced` and the health status becomes `Healthy`. Use `kubectl get pods -n <namespace>` to confirm application pods are running. If Ingress is configured, use `curl` or a web browser to access the application via its external hostname and verify the expected response. Make a small change to an application manifest in Git (e.g., update an image tag to a new version or change a ConfigMap). Commit the change. Verify ArgoCD detects the change and automatically syncs the application to the new state. Confirm the application updates successfully in the cluster.",
+        "status": "pending",
+        "dependencies": [
+          8,
+          13,
+          16
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 26,
+        "title": "Configure Monitoring Dashboards and Alerts",
+        "description": "Set up comprehensive Grafana dashboards for cluster monitoring and configure AlertManager rules for critical infrastructure alerts.",
+        "details": "Access the deployed Grafana instance (from Task 10). Import or create dashboards focusing on key cluster metrics, including node health (CPU, memory, disk I/O, network), Longhorn storage usage and health (from Task 6), and general application metrics (if Prometheus is configured to scrape them). Utilize available community dashboards or create custom ones. Access the deployed AlertManager instance (from Task 10). Define alerting rules in AlertManager based on critical thresholds for the monitored metrics (e.g., node resource saturation, low disk space on Longhorn volumes, unhealthy Longhorn replicas, application error rates). Configure AlertManager to use appropriate notification channels (assuming channels like email or Slack are configured elsewhere, or note that channel configuration is outside the scope of this task). Ensure Prometheus is correctly scraping metrics from nodes, Longhorn, and relevant applications.",
+        "testStrategy": "Access the Grafana UI and verify that the configured dashboards are visible and populated with real-time data for node health, Longhorn storage, and application metrics. Verify that specific panels show expected data points. Access the AlertManager UI and confirm that the defined alerting rules are loaded and show no configuration errors. If possible, simulate a low-severity alert condition (e.g., by temporarily setting a low threshold for a non-critical metric) and verify that an alert is triggered and appears in the AlertManager UI. Confirm that Prometheus is successfully scraping metrics from all intended targets (nodes, Longhorn, applications).",
+        "status": "pending",
+        "dependencies": [
+          10,
+          6
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 27,
+        "title": "Simplify Environment Structure (Dev + Production)",
+        "description": "Simplify the environment structure by removing the staging environment and reconfiguring the dev environment for localhost-only use, while retaining the production configuration.",
+        "details": "This task involves modifying the existing Ansible and GitOps configurations to reflect the simplified environment structure. Specific steps include:\n\n1.  **Ansible Inventory Update:**\n    *   Remove the `staging/` directory and all its contents from `infrastructure/inventory/`.\n    *   Review and update the `dev/` inventory (e.g., `infrastructure/inventory/dev/hosts.yml`) to explicitly target `localhost` or ensure it's configured for a single-node, local setup.\n    *   Verify the `production/` inventory remains unchanged.\n\n2.  **Ansible Playbook/Role Review:**\n    *   Review relevant playbooks and roles (especially those handling environment-specific logic or deployments) to ensure they correctly handle the absence of the staging environment.\n    *   Adjust any conditional logic (`when: environment == 'staging'`) or variable lookups that relied on the staging environment.\n    *   Ensure playbooks can still be executed successfully against both the simplified `dev` and the `production` inventories.\n\n3.  **GitOps Configuration Update:**\n    *   Navigate to the GitOps repository structure (assuming a structure like `gitops/environments/`).\n    *   Remove the directory and all contents related to the `staging` environment (e.g., `gitops/environments/staging/`).\n    *   Review and update the `dev` environment configurations (e.g., `gitops/environments/dev/`) to ensure they are suitable for a localhost-only deployment (e.g., potentially reducing replicas, removing external ingress if not needed locally, adjusting resource requests/limits).\n    *   Review ArgoCD Application or ApplicationSet definitions (e.g., in `gitops/argocd/`) and remove any that specifically targeted the staging environment.\n\n4.  **Documentation Update:**\n    *   Update any relevant documentation (READMEs, deployment guides) to reflect the removal of the staging environment and the nature of the dev environment.",
+        "testStrategy": "1.  **Ansible Verification:**\n    *   Verify the `staging/` directory is removed from `infrastructure/inventory/`.\n    *   Verify the `dev/` inventory correctly targets localhost or a single node.\n    *   Run a simple Ansible playbook (e.g., one that gathers facts) against both the `dev` and `production` inventories to ensure they are valid and the playbooks execute without errors related to missing environments.\n2.  **GitOps Verification:**\n    *   Verify the `staging/` environment directory is removed from the GitOps repository.\n    *   Review key configuration files in the `dev/` GitOps directory to confirm they are appropriate for a localhost setup.\n    *   Review ArgoCD Application/ApplicationSet manifests to confirm staging references are removed.\n3.  **Simulated Deployment (Optional but Recommended):**\n    *   If possible, simulate syncing the GitOps repository with a test ArgoCD instance or perform a dry run to ensure applications for `dev` and `production` are correctly defined and staging applications are no longer present.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          15,
+          25
+        ],
+        "priority": "high",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-06-17T20:14:18.518Z",
-      "updated": "2025-06-17T23:43:02.077Z",
+      "updated": "2025-06-19T20:12:44.504Z",
       "description": "Tasks for master context"
     }
   }

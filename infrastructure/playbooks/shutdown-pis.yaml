@@ -8,7 +8,7 @@
   gather_facts: true
   serial: 1  # Shutdown one at a time to avoid cluster issues
   tags: ['shutdown', 'maintenance']
-  
+
   pre_tasks:
     - name: "Display shutdown target"
       debug:
@@ -31,7 +31,7 @@
       delegate_to: localhost
       become: false
       ignore_errors: true
-      when: 
+      when:
         - node_type is defined
         - node_type in ['control_plane', 'worker']
 
@@ -42,7 +42,7 @@
       ignore_errors: true
       when: node_type is defined
 
-    - name: "Stop k3s-agent service gracefully" 
+    - name: "Stop k3s-agent service gracefully"
       systemd:
         name: k3s-agent
         state: stopped
@@ -51,7 +51,7 @@
 
     - name: "Sync filesystem"
       command: sync
-      
+
     - name: "Final shutdown"
       shell: "shutdown -h now"
       async: 1
@@ -63,7 +63,7 @@
       wait_for_connection:
         timeout: 10
       ignore_errors: true
-      
+
     - name: "Shutdown notification"
       debug:
         msg: "{{ inventory_hostname }} shutdown initiated"
@@ -74,7 +74,7 @@
   gather_facts: false
   become: false
   tags: ['verify']
-  
+
   tasks:
     - name: "Check Pi node connectivity"
       wait_for:
@@ -96,4 +96,4 @@
           - "{% endfor %}"
           - ""
           - "⚠️  All Raspberry Pi nodes have been shutdown!"
-          - "💡 To restart: Power cycle each device manually" 
+          - "💡 To restart: Power cycle each device manually"

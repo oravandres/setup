@@ -1,27 +1,34 @@
 ---
-# Development Environment Inventory
-# This is a simplified dev environment for testing and development
+# Development Environment Inventory - Localhost Only
+# Single-node development setup for local testing and development
 
 all:
   children:
-    k3s_cluster:
+    k3s_dev_local:
       children:
-        control_plane:
+        dev_control_plane:
           hosts:
-            dream-machine:
-              ansible_host: localhost
+            localhost:
+              ansible_host: 127.0.0.1
               ansible_connection: local
-              # Dev environment uses single node for simplicity
-        workers:
-          hosts:
-            # Dev environment can be single-node or use additional Pi nodes
-            # Uncomment below for multi-node dev setup
-            # pi-n1:
-            #   ansible_host: 192.168.1.101
-            #   ansible_user: andres
-    
-    # Development-specific groups
-    dev_nodes:
-      children:
-        control_plane:
-        workers: 
+              ansible_user: "{{ lookup('env', 'USER') }}"
+              node_architecture: amd64
+              node_type: single_node_dev
+              # Development-specific labels
+              node_labels:
+                - "node-role.kubernetes.io/control-plane=true" 
+                - "node-role.kubernetes.io/worker=true"
+                - "kubernetes.io/arch=amd64"
+                - "environment=dev"
+                - "nodepool=localhost"
+              # Development resource limits
+              dev_settings:
+                minimal_resources: true
+                debug_mode: true
+                local_storage_only: true
+                skip_backup: true
+                
+    # Development-specific logical grouping
+    dev_localhost:
+      hosts:
+        localhost: 

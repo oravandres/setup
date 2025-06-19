@@ -27,24 +27,20 @@ spec:
   - list:
       elements:
       - environment: dev
-        cluster: k3s-dev
+        cluster: k3s-dev-local
         url: https://kubernetes.default.svc
         namespace_suffix: "-dev"
         values_file: environments/dev/values.yaml
         auto_sync: true
-      - environment: staging
-        cluster: k3s-staging
-        url: https://k3s-staging.cluster.local  
-        namespace_suffix: "-staging"
-        values_file: environments/staging/values.yaml
-        auto_sync: true
+        description: "Local development environment"
       - environment: production
         cluster: k3s-production
-        url: https://k3s-production.cluster.local
+        url: https://kubernetes.default.svc
         namespace_suffix: ""
         values_file: environments/production/values.yaml
         auto_sync: false  # Manual sync for production
-        
+        description: "Production cluster environment"
+
   template:
     metadata:
       name: '{{path.basename}}-{{environment}}'
@@ -53,6 +49,7 @@ spec:
         cluster: '{{cluster}}'
         component: application
         application: '{{path.basename}}'
+        description: '{{description}}'
     spec:
       project: default
       source:
@@ -65,7 +62,7 @@ spec:
           parameters:
           - name: global.environment
             value: '{{environment}}'
-          - name: global.cluster  
+          - name: global.cluster
             value: '{{cluster}}'
           - name: global.namespace_suffix
             value: '{{namespace_suffix}}'
@@ -86,4 +83,4 @@ spec:
             duration: 5s
             factor: 2
             maxDuration: 3m
-      revisionHistoryLimit: 5 
+      revisionHistoryLimit: 5
